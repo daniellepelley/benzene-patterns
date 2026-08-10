@@ -1,4 +1,3 @@
-using Amazon;
 using Amazon.DynamoDBv2;
 using Amazon.Runtime;
 using Microsoft.Extensions.Configuration;
@@ -24,15 +23,18 @@ internal static class DynamoDbClients
             return new AmazonDynamoDBClient();
         }
 
-        // The SDK requires some region even against DynamoDB Local (which ignores its value) - set it
-        // explicitly rather than depending on an AWS_REGION env var the compose file would otherwise
-        // have to remember to set. Endpoint discovery is explicitly disabled - see TradeLedger's
-        // StartUp.cs comment for why (it was the actual cause of a "security token invalid" CI failure
-        // that the credential-format fix alone didn't resolve).
+        // The SDK requires some region for SigV4 signing even against DynamoDB Local (which ignores
+        // its value) - but setting RegionEndpoint (as earlier revisions of this file did) makes the
+        // SDK's DetermineServiceURL() ignore ServiceURL entirely and resolve the real AWS endpoint for
+        // that region instead (aws/aws-sdk-net#1781), silently sending every request to real AWS
+        // DynamoDB signed with throwaway credentials - see TradeLedger's StartUp.cs comment for the
+        // full story (this was the actual cause of the "security token invalid" CI failures, not
+        // endpoint discovery or credential formatting, both tried and ruled out first).
+        // AuthenticationRegion supplies the signing region without affecting endpoint resolution.
         var config = new AmazonDynamoDBConfig
         {
             ServiceURL = serviceUrl,
-            RegionEndpoint = RegionEndpoint.USEast1,
+            AuthenticationRegion = "us-east-1",
             EndpointDiscoveryEnabled = false
         };
         return new AmazonDynamoDBClient(LocalCredentials, config);
@@ -47,7 +49,8 @@ internal static class DynamoDbClients
             return new AmazonDynamoDBStreamsClient();
         }
 
-        var config = new AmazonDynamoDBStreamsConfig { ServiceURL = serviceUrl, RegionEndpoint = RegionEndpoint.USEast1 };
+        // Same ServiceURL-vs-RegionEndpoint pitfall as CreateTableClient above applies here too.
+        var config = new AmazonDynamoDBStreamsConfig { ServiceURL = serviceUrl, AuthenticationRegion = "us-east-1" };
         return new AmazonDynamoDBStreamsClient(LocalCredentials, config);
     }
 }

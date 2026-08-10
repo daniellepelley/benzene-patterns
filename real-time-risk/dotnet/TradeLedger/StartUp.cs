@@ -1,4 +1,3 @@
-using Amazon;
 using Amazon.DynamoDBv2;
 using Amazon.Runtime;
 using Benzene.Abstractions.Hosting;
@@ -48,18 +47,18 @@ public class StartUp : BenzeneStartUp
             return new AmazonDynamoDBClient();
         }
 
-        // The SDK requires some region even against DynamoDB Local (which ignores its value) - set it
-        // explicitly rather than depending on an AWS_REGION env var the compose file would otherwise
-        // have to remember to set. The access key uses AWS's own documented DynamoDB Local placeholder
-        // (alphanumeric, long enough to pass 2.0+'s stricter format validation). Endpoint discovery is
-        // explicitly disabled: the CI failure's stack trace showed EndpointDiscoveryHandler running
-        // before every request even with ServiceURL set, making a separate discovery call the SDK
-        // wasn't pointing at DynamoDB Local, and *that* call was the one DynamoDB Local (or whatever it
-        // actually reached) rejected with "security token invalid" - not the real table request.
+        // The SDK requires some region for SigV4 signing even against DynamoDB Local (which ignores
+        // its value) - but setting RegionEndpoint (as earlier revisions of this file did) makes the
+        // SDK's DetermineServiceURL() ignore ServiceURL entirely and resolve the real AWS endpoint for
+        // that region instead (aws/aws-sdk-net#1781), silently sending every request to real AWS
+        // DynamoDB signed with throwaway credentials - the actual cause of the "security token
+        // included in the request is invalid" failures seen in CI, not endpoint discovery or
+        // credential formatting (both tried and ruled out first). AuthenticationRegion supplies the
+        // signing region without affecting endpoint resolution, so ServiceURL is honored.
         var config = new AmazonDynamoDBConfig
         {
             ServiceURL = serviceUrl,
-            RegionEndpoint = RegionEndpoint.USEast1,
+            AuthenticationRegion = "us-east-1",
             EndpointDiscoveryEnabled = false
         };
         return new AmazonDynamoDBClient(new BasicAWSCredentials("DUMMYIDEXAMPLE", "DUMMYEXAMPLEKEY"), config);
