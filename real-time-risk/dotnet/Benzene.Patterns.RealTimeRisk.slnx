@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/Contracts/">
+    <Project Path="Contracts/Benzene.Patterns.RealTimeRisk.Contracts.csproj" />
+  </Folder>
+  <Folder Name="/RiskReadModels/">
+    <Project Path="RiskReadModels/Benzene.Patterns.RealTimeRisk.RiskReadModels.csproj" />
+  </Folder>
+  <Folder Name="/TradeLedger/">
+    <Project Path="TradeLedger/Benzene.Patterns.RealTimeRisk.TradeLedger.csproj" />
+  </Folder>
+</Solution>

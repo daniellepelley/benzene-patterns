@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- See TradeLedger's .csproj comment: consumed from NuGet, floating on the alpha channel until
+         this repo has had its first successful build against a published Benzene.EventSourcing.DynamoDb. -->
+    <PackageReference Include="Benzene.AspNet.Core" Version="0.0.2.*-*" />
+    <!-- No separate AWSSDK.DynamoDBStreams reference: that package didn't exist until AWS SDK v4 -
+         under v3.7.x (which this pins to, matching Benzene.EventSourcing.DynamoDb's own reference -
+         see TradeLedger's .csproj comment), IAmazonDynamoDBStreams/AmazonDynamoDBStreamsClient ship
+         bundled inside AWSSDK.DynamoDBv2 itself. -->
+    <PackageReference Include="AWSSDK.DynamoDBv2" Version="3.7.301.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Contracts\Benzene.Patterns.RealTimeRisk.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>
