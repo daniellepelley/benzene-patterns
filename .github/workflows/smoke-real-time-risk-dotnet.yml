@@ -89,9 +89,21 @@ jobs:
 
       - name: Dump logs on failure
         if: failure()
+        # No --tail limit, and one service at a time: risk-read-models alone emits 2 log lines per
+        # /positions poll (up to 90 of them), which was drowning out TradeStreamProjector's own
+        # startup/lifecycle lines under a shared --tail=200 - the exact lines needed to diagnose a
+        # failed projection were being truncated away before they ever reached this step's output.
         run: |
           docker compose -f "$COMPOSE_FILE" ps -a || true
-          docker compose -f "$COMPOSE_FILE" logs --tail=200 || true
+          for service in dynamodb-local trade-ledger risk-read-models; do
+            echo "::group::$service full logs"
+            docker compose -f "$COMPOSE_FILE" logs "$service" || true
+            echo "::endgroup::"
+          done
+          echo "::group::risk-read-models TradeStreamProjector lines only"
+          docker compose -f "$COMPOSE_FILE" logs risk-read-models 2>&1 \
+            | grep -E 'TradeStreamProjector|Unhandled exception|Fatal' || echo "(no matching lines)"
+          echo "::endgroup::"
 
       - name: Compose down
         if: always()
