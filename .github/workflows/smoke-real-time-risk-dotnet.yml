@@ -62,11 +62,16 @@ jobs:
             || { echo "::error::expected the first trade on a fresh book to be version 1"; exit 1; }
 
       # The projection is eventually consistent (DynamoDB Streams -> the background poller), so poll
-      # until it catches up rather than asserting on the first read.
+      # until it catches up rather than asserting on the first read. 90 attempts (~3 minutes) rather
+      # than the original 30 (~1 minute): a real run showed the projector's own stream-discovery loop
+      # (TradeStreamProjector.WaitForStreamArnAsync, 2s interval) plus its first GetRecords poll can
+      # take close to a minute on a loaded CI runner even though every step it's built from is fast in
+      # isolation - the projection landed correctly (right trade, right version) just a few seconds
+      # after the old 60s budget ran out, so this was headroom, not a logic bug.
       - name: Assert the read model reflects the booked trade
         run: |
           ok=0
-          for i in $(seq 1 30); do
+          for i in $(seq 1 90); do
             curl -fsS http://localhost:8082/books/smoke-test/positions -o positions.json
             projected=$(jq -r '.projectedThroughVersion' positions.json)
             echo "attempt $i: projectedThroughVersion=$projected"
