@@ -12,9 +12,8 @@ namespace Benzene.Patterns.RealTimeRisk.RiskReadModels;
 internal static class DynamoDbClients
 {
     // DynamoDB Local 2.0+ validates the access key format more strictly than earlier versions - a
-    // short placeholder like "local" is rejected with "The security token included in the request is
-    // invalid" even though it's alphanumeric. This is the exact placeholder AWS's own DynamoDB Local
-    // docs use, and it's confirmed to pass.
+    // short placeholder like "local" is rejected even though it's alphanumeric. This is the exact
+    // placeholder AWS's own DynamoDB Local docs use.
     private static readonly BasicAWSCredentials LocalCredentials = new("DUMMYIDEXAMPLE", "DUMMYEXAMPLEKEY");
 
     public static IAmazonDynamoDB CreateTableClient(IConfiguration configuration)
@@ -27,8 +26,15 @@ internal static class DynamoDbClients
 
         // The SDK requires some region even against DynamoDB Local (which ignores its value) - set it
         // explicitly rather than depending on an AWS_REGION env var the compose file would otherwise
-        // have to remember to set.
-        var config = new AmazonDynamoDBConfig { ServiceURL = serviceUrl, RegionEndpoint = RegionEndpoint.USEast1 };
+        // have to remember to set. Endpoint discovery is explicitly disabled - see TradeLedger's
+        // StartUp.cs comment for why (it was the actual cause of a "security token invalid" CI failure
+        // that the credential-format fix alone didn't resolve).
+        var config = new AmazonDynamoDBConfig
+        {
+            ServiceURL = serviceUrl,
+            RegionEndpoint = RegionEndpoint.USEast1,
+            EndpointDiscoveryEnabled = false
+        };
         return new AmazonDynamoDBClient(LocalCredentials, config);
     }
 

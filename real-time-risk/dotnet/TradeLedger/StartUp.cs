@@ -50,11 +50,18 @@ public class StartUp : BenzeneStartUp
 
         // The SDK requires some region even against DynamoDB Local (which ignores its value) - set it
         // explicitly rather than depending on an AWS_REGION env var the compose file would otherwise
-        // have to remember to set. The access key must be alphanumeric-only and long enough to pass
-        // DynamoDB Local 2.0+'s stricter format validation (added after 1.23) - "local"/"local" was
-        // rejected with "The security token included in the request is invalid" even though it's
-        // alphanumeric, so this uses the exact placeholder AWS's own DynamoDB Local docs use.
-        var config = new AmazonDynamoDBConfig { ServiceURL = serviceUrl, RegionEndpoint = RegionEndpoint.USEast1 };
+        // have to remember to set. The access key uses AWS's own documented DynamoDB Local placeholder
+        // (alphanumeric, long enough to pass 2.0+'s stricter format validation). Endpoint discovery is
+        // explicitly disabled: the CI failure's stack trace showed EndpointDiscoveryHandler running
+        // before every request even with ServiceURL set, making a separate discovery call the SDK
+        // wasn't pointing at DynamoDB Local, and *that* call was the one DynamoDB Local (or whatever it
+        // actually reached) rejected with "security token invalid" - not the real table request.
+        var config = new AmazonDynamoDBConfig
+        {
+            ServiceURL = serviceUrl,
+            RegionEndpoint = RegionEndpoint.USEast1,
+            EndpointDiscoveryEnabled = false
+        };
         return new AmazonDynamoDBClient(new BasicAWSCredentials("DUMMYIDEXAMPLE", "DUMMYEXAMPLEKEY"), config);
     }
 }
