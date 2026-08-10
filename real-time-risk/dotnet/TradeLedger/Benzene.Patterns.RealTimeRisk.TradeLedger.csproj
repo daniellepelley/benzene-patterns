@@ -9,10 +9,34 @@
   <ItemGroup>
     <!-- Consumed from NuGet like any other Benzene application - this repo is downstream of the
          language ports, not a sibling of them. Pinned to the exact alpha version published by the
-         first "Deploy Benzene" run that included Benzene.EventSourcing/.DynamoDb. -->
-    <PackageReference Include="Benzene.AspNet.Core" Version="0.0.2-alpha.3" />
-    <PackageReference Include="Benzene.EventSourcing" Version="0.0.2-alpha.3" />
-    <PackageReference Include="Benzene.EventSourcing.DynamoDb" Version="0.0.2-alpha.3" />
+         first "Deploy Benzene" run that included Benzene.EventSourcing/.DynamoDb.
+
+         A bare Version="0.0.2-alpha.3" is a MINIMUM floor to NuGet, not an exact pin - and nuget.org
+         hosts older releases of these same packages under a legacy 4-part scheme (e.g.
+         0.0.2.1-alpha), whose numeric core (0.0.2.1) compares as *higher* than 0.0.2-alpha.3's
+         (0.0.2.0) under NuGet's version-ordering rules, regardless of the prerelease label. Nothing
+         else in the graph pins those transitive packages, so a cold restore (no local package cache -
+         every Docker build here starts from zero) can float any one of them up to a legacy version
+         with a different, incompatible API shape (confirmed in CI: Benzene.Abstractions.MessageHandlers,
+         Benzene.Core, and Benzene.Microsoft.Dependencies each did this on different runs). The [version]
+         bracket syntax is an exact-match constraint, which NuGet honors even against a higher-sorting
+         candidate - so every Benzene.* package actually used (direct and transitive) is pinned here. -->
+    <PackageReference Include="Benzene.AspNet.Core" Version="[0.0.2-alpha.3]" />
+    <PackageReference Include="Benzene.EventSourcing" Version="[0.0.2-alpha.3]" />
+    <PackageReference Include="Benzene.EventSourcing.DynamoDb" Version="[0.0.2-alpha.3]" />
+    <PackageReference Include="Benzene.Abstractions" Version="[0.0.2-alpha.3]" />
+    <PackageReference Include="Benzene.Abstractions.MessageHandlers" Version="[0.0.2-alpha.3]" />
+    <PackageReference Include="Benzene.Abstractions.Messages" Version="[0.0.2-alpha.3]" />
+    <PackageReference Include="Benzene.Abstractions.Middleware" Version="[0.0.2-alpha.3]" />
+    <PackageReference Include="Benzene.Abstrations.Pipelines" Version="[0.0.2-alpha.3]" />
+    <PackageReference Include="Benzene.CodeGen.SourceGenerators" Version="[0.0.2-alpha.3]" />
+    <PackageReference Include="Benzene.Core" Version="[0.0.2-alpha.3]" />
+    <PackageReference Include="Benzene.Core.MessageHandlers" Version="[0.0.2-alpha.3]" />
+    <PackageReference Include="Benzene.Core.Messages" Version="[0.0.2-alpha.3]" />
+    <PackageReference Include="Benzene.Core.Middleware" Version="[0.0.2-alpha.3]" />
+    <PackageReference Include="Benzene.Http" Version="[0.0.2-alpha.3]" />
+    <PackageReference Include="Benzene.Microsoft.Dependencies" Version="[0.0.2-alpha.3]" />
+    <PackageReference Include="Benzene.Results" Version="[0.0.2-alpha.3]" />
     <!-- Pinned to the exact version Benzene.EventSourcing.DynamoDb itself references (see that
          package's .csproj in benzene-dotnet), not a floating range: AWS SDK v4 is a breaking major
          version bump from v3, so floating here risked resolving a version that package wasn't built
