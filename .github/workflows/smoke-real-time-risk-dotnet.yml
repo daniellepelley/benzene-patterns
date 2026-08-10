@@ -101,8 +101,11 @@ jobs:
             echo "::endgroup::"
           done
           echo "::group::risk-read-models TradeStreamProjector lines only"
+          # -A 1: the .NET console logger puts the category on one line ("info: ...TradeStreamProjector[0]")
+          # and the actual message on the next, indented line - without -A 1 this only ever showed the
+          # category, never the message that explains what happened.
           docker compose -f "$COMPOSE_FILE" logs risk-read-models 2>&1 \
-            | grep -E 'TradeStreamProjector|Unhandled exception|Fatal' || echo "(no matching lines)"
+            | grep -A 1 -E 'TradeStreamProjector|Unhandled exception|Fatal' || echo "(no matching lines)"
           echo "::endgroup::"
 
       - name: Compose down

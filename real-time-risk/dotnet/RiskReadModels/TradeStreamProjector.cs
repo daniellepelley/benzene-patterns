@@ -57,43 +57,60 @@ public class TradeStreamProjector : BackgroundService
         _logger.LogInformation("Projecting from stream {StreamArn}", streamArn);
 
         var shardIterators = new Dictionary<string, string?>();
+        var pollCount = 0;
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            var description = await _streams.DescribeStreamAsync(
-                new DescribeStreamRequest { StreamArn = streamArn }, stoppingToken);
-
-            foreach (var shard in description.StreamDescription.Shards)
+            pollCount++;
+            try
             {
-                if (shardIterators.ContainsKey(shard.ShardId))
+                var description = await _streams.DescribeStreamAsync(
+                    new DescribeStreamRequest { StreamArn = streamArn }, stoppingToken);
+
+                foreach (var shard in description.StreamDescription.Shards)
                 {
-                    continue;
+                    if (shardIterators.ContainsKey(shard.ShardId))
+                    {
+                        continue;
+                    }
+
+                    var iterator = await _streams.GetShardIteratorAsync(new GetShardIteratorRequest
+                    {
+                        StreamArn = streamArn,
+                        ShardId = shard.ShardId,
+                        ShardIteratorType = ShardIteratorType.TRIM_HORIZON
+                    }, stoppingToken);
+                    shardIterators[shard.ShardId] = iterator.ShardIterator;
+                    _logger.LogInformation("Started tracking shard {ShardId}", shard.ShardId);
                 }
 
-                var iterator = await _streams.GetShardIteratorAsync(new GetShardIteratorRequest
+                foreach (var shardId in shardIterators.Keys.ToList())
                 {
-                    StreamArn = streamArn,
-                    ShardId = shard.ShardId,
-                    ShardIteratorType = ShardIteratorType.TRIM_HORIZON
-                }, stoppingToken);
-                shardIterators[shard.ShardId] = iterator.ShardIterator;
+                    var iterator = shardIterators[shardId];
+                    if (iterator is null)
+                    {
+                        // A null NextShardIterator means the shard is closed and fully drained - nothing left to read.
+                        continue;
+                    }
+
+                    var records = await _streams.GetRecordsAsync(new GetRecordsRequest { ShardIterator = iterator }, stoppingToken);
+                    if (records.Records.Count > 0)
+                    {
+                        _logger.LogInformation("Shard {ShardId} returned {RecordCount} record(s)", shardId, records.Records.Count);
+                    }
+                    foreach (var record in records.Records)
+                    {
+                        Apply(record);
+                    }
+                    shardIterators[shardId] = records.NextShardIterator;
+                }
             }
-
-            foreach (var shardId in shardIterators.Keys.ToList())
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                var iterator = shardIterators[shardId];
-                if (iterator is null)
-                {
-                    // A null NextShardIterator means the shard is closed and fully drained - nothing left to read.
-                    continue;
-                }
-
-                var records = await _streams.GetRecordsAsync(new GetRecordsRequest { ShardIterator = iterator }, stoppingToken);
-                foreach (var record in records.Records)
-                {
-                    Apply(record);
-                }
-                shardIterators[shardId] = records.NextShardIterator;
+                // The loop previously had no exception handling at all, so any failure here would
+                // silently end the BackgroundService's work with no log trace - log and keep polling
+                // rather than let that happen again unnoticed.
+                _logger.LogError(ex, "Poll {PollCount} failed - will retry", pollCount);
             }
 
             await Task.Delay(PollInterval, stoppingToken);
