@@ -7,9 +7,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- See TradeLedger's .csproj comment: consumed from NuGet, floating on the alpha channel until
-         this repo has had its first successful build against a published Benzene.EventSourcing.DynamoDb. -->
-    <PackageReference Include="Benzene.AspNet.Core" Version="0.0.2.*-*" />
+    <!-- See TradeLedger's .csproj comment: pinned to the exact published alpha version. -->
+    <PackageReference Include="Benzene.AspNet.Core" Version="0.0.2-alpha.3" />
     <!-- No separate AWSSDK.DynamoDBStreams reference: that package didn't exist until AWS SDK v4 -
          under v3.7.x (which this pins to, matching Benzene.EventSourcing.DynamoDb's own reference -
          see TradeLedger's .csproj comment), IAmazonDynamoDBStreams/AmazonDynamoDBStreamsClient ship

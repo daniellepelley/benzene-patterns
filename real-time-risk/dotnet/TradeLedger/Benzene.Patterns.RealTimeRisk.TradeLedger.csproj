@@ -8,12 +8,11 @@
 
   <ItemGroup>
     <!-- Consumed from NuGet like any other Benzene application - this repo is downstream of the
-         language ports, not a sibling of them. Pinned to a floating alpha version for now (this
-         pattern currently depends on Benzene.EventSourcing/.DynamoDb, which are pre-release); tighten
-         to an exact version once the repo has had its first successful build. -->
-    <PackageReference Include="Benzene.AspNet.Core" Version="0.0.2.*-*" />
-    <PackageReference Include="Benzene.EventSourcing" Version="0.0.2.*-*" />
-    <PackageReference Include="Benzene.EventSourcing.DynamoDb" Version="0.0.2.*-*" />
+         language ports, not a sibling of them. Pinned to the exact alpha version published by the
+         first "Deploy Benzene" run that included Benzene.EventSourcing/.DynamoDb. -->
+    <PackageReference Include="Benzene.AspNet.Core" Version="0.0.2-alpha.3" />
+    <PackageReference Include="Benzene.EventSourcing" Version="0.0.2-alpha.3" />
+    <PackageReference Include="Benzene.EventSourcing.DynamoDb" Version="0.0.2-alpha.3" />
     <!-- Pinned to the exact version Benzene.EventSourcing.DynamoDb itself references (see that
          package's .csproj in benzene-dotnet), not a floating range: AWS SDK v4 is a breaking major
          version bump from v3, so floating here risked resolving a version that package wasn't built
