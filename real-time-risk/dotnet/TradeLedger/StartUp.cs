@@ -36,7 +36,7 @@ public class StartUp : BenzeneStartUp
         => app.UseHttp(http => http
             .UseMessageHandlers());
 
-    // LocalStack (Docker Compose) needs an explicit endpoint + throwaway credentials; a real AWS
+    // DynamoDB Local (Docker Compose) needs an explicit endpoint + throwaway credentials; a real AWS
     // deployment would omit DYNAMODB_SERVICE_URL and fall back to the default client (region +
     // credential chain from the environment/IAM role) - not exercised by this local-first slice yet,
     // see real-time-risk/README.md's roadmap.
@@ -48,10 +48,13 @@ public class StartUp : BenzeneStartUp
             return new AmazonDynamoDBClient();
         }
 
-        // The SDK requires some region even against LocalStack (which ignores its value) - set it
+        // The SDK requires some region even against DynamoDB Local (which ignores its value) - set it
         // explicitly rather than depending on an AWS_REGION env var the compose file would otherwise
-        // have to remember to set.
+        // have to remember to set. The access key must be alphanumeric-only and long enough to pass
+        // DynamoDB Local 2.0+'s stricter format validation (added after 1.23) - "local"/"local" was
+        // rejected with "The security token included in the request is invalid" even though it's
+        // alphanumeric, so this uses the exact placeholder AWS's own DynamoDB Local docs use.
         var config = new AmazonDynamoDBConfig { ServiceURL = serviceUrl, RegionEndpoint = RegionEndpoint.USEast1 };
-        return new AmazonDynamoDBClient(new BasicAWSCredentials("local", "local"), config);
+        return new AmazonDynamoDBClient(new BasicAWSCredentials("DUMMYIDEXAMPLE", "DUMMYEXAMPLEKEY"), config);
     }
 }

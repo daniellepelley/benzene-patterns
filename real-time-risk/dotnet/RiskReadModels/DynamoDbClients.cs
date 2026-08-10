@@ -7,10 +7,16 @@ namespace Benzene.Patterns.RealTimeRisk.RiskReadModels;
 
 /// <summary>
 /// Builds this service's two DynamoDB clients (table + streams) against the same endpoint override,
-/// so the LocalStack-vs-real-AWS decision (see <see cref="StartUp"/>) is made once, not twice.
+/// so the DynamoDB-Local-vs-real-AWS decision (see <see cref="StartUp"/>) is made once, not twice.
 /// </summary>
 internal static class DynamoDbClients
 {
+    // DynamoDB Local 2.0+ validates the access key format more strictly than earlier versions - a
+    // short placeholder like "local" is rejected with "The security token included in the request is
+    // invalid" even though it's alphanumeric. This is the exact placeholder AWS's own DynamoDB Local
+    // docs use, and it's confirmed to pass.
+    private static readonly BasicAWSCredentials LocalCredentials = new("DUMMYIDEXAMPLE", "DUMMYEXAMPLEKEY");
+
     public static IAmazonDynamoDB CreateTableClient(IConfiguration configuration)
     {
         var serviceUrl = configuration["DYNAMODB_SERVICE_URL"];
@@ -19,16 +25,16 @@ internal static class DynamoDbClients
             return new AmazonDynamoDBClient();
         }
 
-        // The SDK requires some region even against LocalStack (which ignores its value) - set it
+        // The SDK requires some region even against DynamoDB Local (which ignores its value) - set it
         // explicitly rather than depending on an AWS_REGION env var the compose file would otherwise
         // have to remember to set.
         var config = new AmazonDynamoDBConfig { ServiceURL = serviceUrl, RegionEndpoint = RegionEndpoint.USEast1 };
-        return new AmazonDynamoDBClient(new BasicAWSCredentials("local", "local"), config);
+        return new AmazonDynamoDBClient(LocalCredentials, config);
     }
 
     public static IAmazonDynamoDBStreams CreateStreamsClient(IConfiguration configuration)
     {
-        // LocalStack serves DynamoDB Streams on the same endpoint as the table API.
+        // DynamoDB Local serves the Streams API on the same endpoint as the table API.
         var serviceUrl = configuration["DYNAMODB_SERVICE_URL"];
         if (string.IsNullOrEmpty(serviceUrl))
         {
@@ -36,6 +42,6 @@ internal static class DynamoDbClients
         }
 
         var config = new AmazonDynamoDBStreamsConfig { ServiceURL = serviceUrl, RegionEndpoint = RegionEndpoint.USEast1 };
-        return new AmazonDynamoDBStreamsClient(new BasicAWSCredentials("local", "local"), config);
+        return new AmazonDynamoDBStreamsClient(LocalCredentials, config);
     }
 }
