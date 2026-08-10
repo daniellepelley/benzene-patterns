@@ -2,7 +2,7 @@ name: Smoke - Real-Time Risk (.NET)
 
 # End-to-end smoke test for the .NET Trade Ledger + Risk Read Models slice: build the images,
 # `docker compose up`, book a trade, and assert the read model eventually reflects it. Fully
-# self-contained (LocalStack, no cloud credentials).
+# self-contained (DynamoDB Local, no cloud credentials or account needed).
 on:
   push:
     branches: [ "main" ]

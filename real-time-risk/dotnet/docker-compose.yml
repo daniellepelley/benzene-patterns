@@ -8,23 +8,23 @@ name: benzene-patterns-real-time-risk
 #     -d '{"book":"desk-a","symbol":"AAPL","side":"Buy","quantity":100,"price":150.25}'
 #   curl http://localhost:8082/books/desk-a/positions
 #
-# LocalStack emulates DynamoDB + DynamoDB Streams; both application services build from the repo
-# root's real-time-risk/dotnet folder (they're ordinary NuGet consumers, so unlike benzene-dotnet's
-# own example compose files there's no need for a wider build context reaching into another repo).
+# The official AWS "DynamoDB Local" image (amazon/dynamodb-local) provides the table + stream -
+# genuinely free, no account/token needed (unlike LocalStack, whose community and pro images merged
+# in 2026: localstack/localstack:latest now requires signing up for a LocalStack account and an auth
+# token even for community-tier services, which would have quietly broken the "no cloud account"
+# promise here). Both application services build from the repo root's real-time-risk/dotnet folder
+# (they're ordinary NuGet consumers, so unlike benzene-dotnet's own example compose files there's no
+# need for a wider build context reaching into another repo).
+#
+# DynamoDB Local has no bundled table-provisioning tool and no HTTP health endpoint to gate on, so
+# there's no dedicated init container here: TradeLedger creates the "trades" table itself at startup
+# (idempotently, with retries - see StartUp.cs), and RiskReadModels' TradeStreamProjector already
+# polls/retries until that table (and its stream) exists.
 services:
-  localstack:
-    image: localstack/localstack:latest
-    environment:
-      - SERVICES=dynamodb,dynamodbstreams
+  dynamodb-local:
+    image: amazon/dynamodb-local:latest
     ports:
-      - "4566:4566"
-    volumes:
-      - ./docker/localstack-init:/etc/localstack/init/ready.d:ro
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
+      - "8000:8000"
 
   trade-ledger:
     build:
@@ -32,13 +32,12 @@ services:
       dockerfile: TradeLedger/Dockerfile
     image: benzene-patterns-trade-ledger:compose
     environment:
-      - DYNAMODB_SERVICE_URL=http://localstack:4566
+      - DYNAMODB_SERVICE_URL=http://dynamodb-local:8000
       - TRADES_TABLE_NAME=trades
     ports:
       - "8081:8080"
     depends_on:
-      localstack:
-        condition: service_healthy
+      - dynamodb-local
 
   risk-read-models:
     build:
@@ -46,10 +45,9 @@ services:
       dockerfile: RiskReadModels/Dockerfile
     image: benzene-patterns-risk-read-models:compose
     environment:
-      - DYNAMODB_SERVICE_URL=http://localstack:4566
+      - DYNAMODB_SERVICE_URL=http://dynamodb-local:8000
       - TRADES_TABLE_NAME=trades
     ports:
       - "8082:8080"
     depends_on:
-      localstack:
-        condition: service_healthy
+      - dynamodb-local

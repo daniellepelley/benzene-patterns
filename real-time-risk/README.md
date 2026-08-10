@@ -57,30 +57,38 @@ curl -X POST http://localhost:8081/trades \
 curl http://localhost:8082/books/desk-a/positions
 ```
 
-No AWS account needed: [LocalStack](https://localstack.cloud) emulates DynamoDB + DynamoDB Streams,
-provisioned automatically on `docker compose up` (see `dotnet/docker/localstack-init/create-tables.sh`).
+No AWS account needed: the official [DynamoDB Local](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/DynamoDBLocal.html)
+image (`amazon/dynamodb-local`) provides the table and its stream, genuinely free with no signup.
+(LocalStack was the original choice here and would have been a fine one, but its community and pro
+images merged in 2026 - `localstack/localstack:latest` now refuses to start without a free LocalStack
+account and an auth token, which would have quietly broken the "no account needed" promise. Found by
+actually running the Docker Compose stack in CI, not assumed.) `TradeLedger` provisions the table
+itself at startup (idempotently, with retries - see `TradeLedger/DynamoDbTableProvisioning.cs`); there
+is no separate init container.
 
 ### A deliberate simplification for this local slice
 
 In production, the Risk Read Models projection would run as a real AWS Lambda function triggered by
 DynamoDB Streams' event source mapping (`Benzene.Aws.Lambda.DynamoDb`, `[Message("trades:INSERT")]` —
 see that package's docs in the `benzene-dotnet` repo). Emulating that end-to-end locally means running
-LocalStack's Lambda executor too, which is a lot of extra moving Docker-in-Docker machinery for a
-local demo. Instead, `RiskReadModels/TradeStreamProjector.cs` is a small background worker that polls
-the same DynamoDB Stream directly with the plain AWS SDK and dispatches to the *same* handler shape
-(topic + JSON body) a real Lambda deployment would use. The wire contract is identical either way;
-swapping in a real Lambda-hosted handler later is a hosting change, not a rewrite - exactly the "same
-handlers, different host" property Benzene is built around.
+a Lambda executor too (LocalStack's or otherwise) - a lot of extra moving Docker-in-Docker machinery
+for a local demo. Instead, `RiskReadModels/TradeStreamProjector.cs` is a small background worker that
+polls the same DynamoDB Stream directly with the plain AWS SDK and dispatches to the *same* handler
+shape (topic + JSON body) a real Lambda deployment would use. The wire contract is identical either
+way; swapping in a real Lambda-hosted handler later is a hosting change, not a rewrite - exactly the
+"same handlers, different host" property Benzene is built around.
 
 ## Roadmap
 
 1. **Market-Data Aggregator + Valuation Service** — needs its own short design pass first: Benzene's
    windowed/partitioned/checkpointed streaming binding (`UseKinesisStream`) exists for Kinesis, Azure
    Event Hubs, and Cosmos DB change feed, but **not** Kafka (which only has a plain per-record
-   consumer) - so "run it locally" isn't a drop-in transport swap here the way DynamoDB was. The two
-   live options are LocalStack's Kinesis emulation (keeps the real `UseKinesisStream` code path) or a
-   new `UseKafkaStream` binding in `benzene-dotnet` (a real framework enhancement, out of scope for
-   just building this one demo). Decide before starting this service.
+   consumer) - so "run it locally" isn't a drop-in transport swap here the way DynamoDB was. LocalStack's
+   Kinesis emulation would keep the real `UseKinesisStream` code path, but factor in that LocalStack
+   itself now requires a free account + auth token to even start (see above) - a real cost against the
+   "no account needed" bar this repo otherwise clears. The alternative is a new `UseKafkaStream` binding
+   in `benzene-dotnet` (a real framework enhancement, out of scope for just building this one demo).
+   Decide before starting this service.
 2. **Risk Coordinator** (map-reduce) — `Benzene.MapReduce`'s `ScatterGatherAsync` over Lambda-to-Lambda
    invoke in production; local Docker Compose needs its own substitute (LocalStack Lambda concurrency,
    or an HTTP-addressed worker pool) worked out on its own.
