@@ -54,6 +54,38 @@ public class BookPositionsStore
         }
     }
 
+    /// <summary>
+    /// Reads every book's position in one symbol - the inverse of <see cref="Query"/>'s "one book,
+    /// every symbol", and what the Valuation Service asks when a bar closes ("who is exposed to
+    /// AAPL?"). An unknown symbol returns an empty list.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately a scan across the existing per-book dictionaries rather than a second,
+    /// symbol-keyed index: this is one read path added to answer one downstream question, and a demo
+    /// with a handful of books scans them in microseconds. A real deployment with thousands of books
+    /// would maintain the inverted index at projection time (in <see cref="Apply"/>) instead - that
+    /// is a storage-model change, not a query change, and it belongs with the "swap the in-memory
+    /// store for a real one" work this projection already owes.
+    /// </remarks>
+    public SymbolPositionsResponse QueryBySymbol(string symbol)
+    {
+        lock (_gate)
+        {
+            var books = _books
+                .Where(entry => entry.Value.Positions.ContainsKey(symbol))
+                .Select(entry => new BookPositionView
+                {
+                    Book = entry.Key,
+                    NetQuantity = entry.Value.Positions[symbol].NetQuantity,
+                    RealizedCash = entry.Value.Positions[symbol].RealizedCash
+                })
+                .OrderBy(view => view.Book, StringComparer.Ordinal)
+                .ToList();
+
+            return new SymbolPositionsResponse { Symbol = symbol, Books = books };
+        }
+    }
+
     /// <summary>Reads a book's current projection. An unknown book returns an empty (zero-trade) result.</summary>
     public BookPositionsResponse Query(string bookId)
     {
