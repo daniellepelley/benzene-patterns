@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- All from nuget.org: this service uses only released packages. The unreleased
+         Benzene.Kafka.Streaming is MarketDataAggregator's dependency alone - a per-record
+         bar-closed reaction needs Benzene.Kafka.Core's plain UseKafka, which has shipped for a
+         while. See TradeLedger's .csproj comment for why every Benzene.* package (direct and
+         transitive) is pinned with the [version] exact-match syntax rather than a bare floor. -->
+    <PackageReference Include="Benzene.AspNet.Core" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Kafka.Core" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.HostedService" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.SelfHost" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Clients" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Abstractions" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Abstractions.MessageHandlers" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Abstractions.Messages" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Abstractions.Middleware" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Abstrations.Pipelines" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.CodeGen.SourceGenerators" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Core" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Core.MessageHandlers" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Core.Messages" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Core.Middleware" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.HealthChecks" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.HealthChecks.Core" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Http" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Microsoft.Dependencies" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Results" Version="[0.0.2-alpha.4]" />
+    <!-- Pinned to the exact version Benzene.Kafka.Core references, matching MarketDataAggregator. -->
+    <PackageReference Include="Confluent.Kafka" Version="2.4.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Contracts\Benzene.Patterns.RealTimeRisk.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

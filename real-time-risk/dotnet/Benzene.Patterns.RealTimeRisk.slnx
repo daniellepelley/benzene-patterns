@@ -15,4 +15,7 @@
   <Folder Name="/TradeLedger/">
     <Project Path="TradeLedger/Benzene.Patterns.RealTimeRisk.TradeLedger.csproj" />
   </Folder>
+  <Folder Name="/ValuationService/">
+    <Project Path="ValuationService/Benzene.Patterns.RealTimeRisk.ValuationService.csproj" />
+  </Folder>
 </Solution>
