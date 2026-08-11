@@ -3,3 +3,8 @@
 .vs/
 *.user
 *.suo
+
+# TEMPORARY, alongside nuget.config - the local folder feed the unreleased Benzene.Kafka.Streaming
+# package is `dotnet pack`ed into (benzene-dotnet PR #17). Never committed: it is a build artifact of
+# another repo's unmerged branch. Delete this entry when that package ships to nuget.org.
+local-packages/

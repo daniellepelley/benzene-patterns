@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- No Benzene reference at all: a market-data feed is not a Benzene service, and a tick is a raw
+         Kafka record with no Benzene envelope (see Contracts/MarketTick.cs). The only shared thing is
+         the POCO and the topic name, which come from the Contracts project. Confluent.Kafka is pinned
+         to the same version Benzene.Kafka.Core references so producer and consumer agree on the
+         client. -->
+    <PackageReference Include="Confluent.Kafka" Version="2.4.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Contracts\Benzene.Patterns.RealTimeRisk.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

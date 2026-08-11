@@ -1,0 +1,65 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- ############################################################################
+         NOT A REAL NUGET.ORG PACKAGE YET - see ../nuget.config before touching this.
+
+         Benzene.Kafka.Streaming is the windowed/partitioned/checkpointed Kafka stream binding from
+         benzene-dotnet PR #17 (branch claude/kafka-stream-binding). It is written, reviewed and
+         building, but it has NOT merged to main and has NOT been published to nuget.org. This
+         reference restores it from the local folder feed declared in ../nuget.config, built with
+         `dotnet pack ... -p:PackageVersion=0.0.2-alpha.4` off that branch - whose branch point is
+         the 0.0.2-alpha.4 release commit, so it is genuinely the 0.0.2-alpha.4 code plus this one
+         new package.
+
+         WHEN PR #17 MERGES AND A RELEASE GOES OUT: bump every pin in this file to the released
+         version and delete ../nuget.config. Do not guess that version number.
+         ############################################################################ -->
+    <PackageReference Include="Benzene.Kafka.Streaming" Version="[0.0.2-alpha.4]" />
+
+    <!-- See TradeLedger's .csproj comment for why every Benzene.* package (direct and transitive) is
+         pinned with the [version] exact-match syntax rather than a bare floor. -->
+    <PackageReference Include="Benzene.Kafka.Core" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Clients" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.HostedService" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.SelfHost" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Abstractions" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Abstractions.MessageHandlers" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Abstractions.Messages" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Abstractions.Middleware" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Abstrations.Pipelines" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.CodeGen.SourceGenerators" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Core" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Core.MessageHandlers" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Core.Messages" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Core.Middleware" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.HealthChecks" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.HealthChecks.Core" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Http" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Microsoft.Dependencies" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Results" Version="[0.0.2-alpha.4]" />
+    <!-- Pinned to the exact version Benzene.Kafka.Core itself references (see that package's .csproj
+         in benzene-dotnet), for the same reason the AWS SDK is pinned in TradeLedger's .csproj:
+         floating risked resolving a client version the package wasn't built against. -->
+    <PackageReference Include="Confluent.Kafka" Version="2.4.0" />
+    <!-- The generic host itself. TradeLedger/RiskReadModels get theirs from the ASP.NET Core shared
+         framework (Microsoft.NET.Sdk.Web); this service has no web surface, so it references the
+         hosting + environment-variable configuration packages explicitly. Benzene.HostedService only
+         brings Microsoft.Extensions.Hosting.Abstractions. -->
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Contracts\Benzene.Patterns.RealTimeRisk.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

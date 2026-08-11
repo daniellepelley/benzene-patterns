@@ -2,8 +2,15 @@
   <Folder Name="/Contracts/">
     <Project Path="Contracts/Benzene.Patterns.RealTimeRisk.Contracts.csproj" />
   </Folder>
+  <Folder Name="/MarketDataAggregator/">
+    <Project Path="MarketDataAggregator/Benzene.Patterns.RealTimeRisk.MarketDataAggregator.csproj" />
+    <Project Path="MarketDataAggregator.Tests/Benzene.Patterns.RealTimeRisk.MarketDataAggregator.Tests.csproj" />
+  </Folder>
   <Folder Name="/RiskReadModels/">
     <Project Path="RiskReadModels/Benzene.Patterns.RealTimeRisk.RiskReadModels.csproj" />
+  </Folder>
+  <Folder Name="/TickGenerator/">
+    <Project Path="TickGenerator/Benzene.Patterns.RealTimeRisk.TickGenerator.csproj" />
   </Folder>
   <Folder Name="/TradeLedger/">
     <Project Path="TradeLedger/Benzene.Patterns.RealTimeRisk.TradeLedger.csproj" />
