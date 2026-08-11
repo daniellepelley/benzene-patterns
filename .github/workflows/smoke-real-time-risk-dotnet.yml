@@ -1,8 +1,10 @@
 name: Smoke - Real-Time Risk (.NET)
 
-# End-to-end smoke test for the .NET Trade Ledger + Risk Read Models slice: build the images,
-# `docker compose up`, book a trade, and assert the read model eventually reflects it. Fully
-# self-contained (DynamoDB Local, no cloud credentials or account needed).
+# End-to-end smoke test for the .NET Trade Ledger + Risk Read Models + Market-Data Aggregator +
+# Valuation Service slice: build the images, `docker compose up`, book a trade, assert the read model
+# reflects it, then assert the synthetic tick feed rolls into a bar and the bar produces a valuation.
+# Fully self-contained (DynamoDB Local + a single-node Apache Kafka in KRaft mode; no cloud
+# credentials, no account, no signup).
 on:
   push:
     branches: [ "main" ]
@@ -28,17 +30,51 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # ####################################################################################
+      # TEMPORARY - DELETE THIS WHOLE STEP when benzene-dotnet PR #17 merges and
+      # Benzene.Kafka.Streaming is published to nuget.org. See real-time-risk/dotnet/nuget.config.
+      #
+      # MarketDataAggregator depends on that package, which is real, reviewed code on an unmerged
+      # branch and does not exist on nuget.org, so it is built from source into the repo-relative
+      # folder feed the Dockerfiles' build context picks up. Everything else - including the
+      # Benzene.Kafka.Core this package depends on - still restores from the real 0.0.2-alpha.4
+      # release.
+      # ####################################################################################
+      - name: Setup .NET (only to pack the unreleased Kafka streaming binding)
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Pack the unreleased Benzene.Kafka.Streaming into the local folder feed
+        run: |
+          git clone --filter=blob:none --no-checkout https://github.com/daniellepelley/Benzene.git /tmp/benzene-dotnet
+          git -C /tmp/benzene-dotnet checkout claude/kafka-stream-binding
+          dotnet pack /tmp/benzene-dotnet/src/Benzene.Kafka.Streaming/Benzene.Kafka.Streaming.csproj \
+            -c Release -p:PackageVersion=0.0.2-alpha.4 \
+            -o "$GITHUB_WORKSPACE/real-time-risk/dotnet/local-packages"
+          # The symbols package would be restored as a duplicate id; the feed only wants the .nupkg.
+          rm -f "$GITHUB_WORKSPACE/real-time-risk/dotnet/local-packages"/*.snupkg
+          ls -la "$GITHUB_WORKSPACE/real-time-risk/dotnet/local-packages"
+
+      - name: Unit tests (the OHLC roll-up logic)
+        # Pure logic, no broker: worth failing fast on before spending minutes on images.
+        run: dotnet test real-time-risk/dotnet/MarketDataAggregator.Tests/Benzene.Patterns.RealTimeRisk.MarketDataAggregator.Tests.csproj
+
       - name: Compose up (build)
         run: docker compose -f "$COMPOSE_FILE" up -d --build
 
-      - name: Wait for both services to accept requests
+      - name: Wait for the HTTP services to accept requests
         # "Up" here just means curl gets any HTTP response instead of connection-refused (status
-        # "000") - neither service has a dedicated health endpoint yet, and TradeLedger has no GET
-        # route at all (only POST /trades), so a 4xx/5xx still proves the app is listening.
+        # "000") - none of the services has a dedicated health endpoint yet, and TradeLedger has no
+        # GET route at all (only POST /trades), so a 4xx/5xx still proves the app is listening.
+        # market-data-aggregator and tick-generator have no HTTP surface at all; the bar assertion
+        # below is what proves they are alive.
         run: |
-          for url in http://localhost:8081/trades http://localhost:8082/books/warmup/positions; do
+          for url in http://localhost:8081/trades \
+                     http://localhost:8082/books/warmup/positions \
+                     http://localhost:8083/valuations/by-symbol/WARMUP; do
             ok=0
-            for i in $(seq 1 30); do
+            for i in $(seq 1 45); do
               status=$(curl -s -o /dev/null -w '%{http_code}' "$url" || true)
               if [ "$status" != "000" ]; then ok=1; break; fi
               sleep 2
@@ -87,6 +123,48 @@ jobs:
           jq -e '.positions[] | select(.symbol == "AAPL" and .netQuantity == 100)' positions.json >/dev/null \
             || { echo "::error::expected a 100-share AAPL position"; exit 1; }
 
+      - name: Assert the by-symbol read path sees the same position
+        # The read the Valuation Service depends on. Same projection, second query - so if the
+        # previous step passed and this one doesn't, the bug is in QueryBySymbol, not the projector.
+        run: |
+          curl -fsS http://localhost:8082/positions/by-symbol/AAPL -o by-symbol.json
+          echo "--- by-symbol.json ---"; cat by-symbol.json
+          jq -e '.books[] | select(.book == "smoke-test" and .netQuantity == 100)' by-symbol.json >/dev/null \
+            || { echo "::error::expected the smoke-test book to show up under AAPL"; exit 1; }
+
+      - name: Assert a bar closed and produced a valuation
+        # The whole new hop in one assertion: the tick generator is producing AAPL ticks, the
+        # aggregator must roll them into a 10s bar (BAR_INTERVAL_SECONDS in docker-compose.yml) and
+        # publish bar-closed, and the Valuation Service must react by marking the smoke-test book's
+        # 100 AAPL shares. Up to ~3 minutes, matching the read-model budget above: this waits on the
+        # read-model projection *and* a bar boundary *and* two Kafka consumer groups forming.
+        run: |
+          ok=0
+          for i in $(seq 1 90); do
+            curl -fsS http://localhost:8083/valuations/by-symbol/AAPL -o valuations.json
+            mark=$(jq -r '.markPrice' valuations.json)
+            books=$(jq -r '[.valuations[] | select(.book == "smoke-test")] | length' valuations.json)
+            echo "attempt $i: markPrice=$mark smoke-test rows=$books"
+            if [ "$books" = "1" ]; then ok=1; break; fi
+            sleep 2
+          done
+          if [ "$ok" != "1" ]; then
+            echo "::error::no valuation for the smoke-test book ever appeared"
+            cat valuations.json
+            exit 1
+          fi
+          echo "--- valuations.json ---"; cat valuations.json
+          # markPrice must be a real mark that came off a bar, not the empty-store default...
+          jq -e '.markPrice > 0' valuations.json >/dev/null \
+            || { echo "::error::expected a non-zero mark price from a closed bar"; exit 1; }
+          # ...and marketValue must be netQuantity x markPrice. Compared with a tolerance, not for
+          # equality: the service computes in decimal, jq reads JSON numbers as doubles, and
+          # 100 * 149.34 is not exactly 14934 in binary floating point.
+          jq -e '(.valuations[] | select(.book == "smoke-test")) as $row
+                 | ($row.marketValue - ($row.netQuantity * .markPrice)) as $diff
+                 | $row.netQuantity == 100 and $diff < 0.01 and $diff > -0.01' valuations.json >/dev/null \
+            || { echo "::error::marketValue is not netQuantity x markPrice"; exit 1; }
+
       - name: Dump logs on failure
         if: failure()
         # No --tail limit, and one service at a time: risk-read-models alone emits 2 log lines per
@@ -95,7 +173,8 @@ jobs:
         # failed projection were being truncated away before they ever reached this step's output.
         run: |
           docker compose -f "$COMPOSE_FILE" ps -a || true
-          for service in dynamodb-local trade-ledger risk-read-models; do
+          for service in dynamodb-local kafka kafka-init trade-ledger risk-read-models \
+                         tick-generator market-data-aggregator valuation-service; do
             echo "::group::$service full logs"
             docker compose -f "$COMPOSE_FILE" logs "$service" || true
             echo "::endgroup::"
@@ -106,6 +185,10 @@ jobs:
           # category, never the message that explains what happened.
           docker compose -f "$COMPOSE_FILE" logs risk-read-models 2>&1 \
             | grep -A 1 -E 'TradeStreamProjector|Unhandled exception|Fatal' || echo "(no matching lines)"
+          echo "::endgroup::"
+          echo "::group::market-data-aggregator closed bars only"
+          docker compose -f "$COMPOSE_FILE" logs market-data-aggregator 2>&1 \
+            | grep -A 1 -E 'OhlcAggregationMiddleware|Unhandled exception|Fatal' || echo "(no matching lines)"
           echo "::endgroup::"
 
       - name: Compose down

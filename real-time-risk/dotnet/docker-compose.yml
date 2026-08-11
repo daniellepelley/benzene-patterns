@@ -1,30 +1,104 @@
 name: benzene-patterns-real-time-risk
 
-# The Real-Time Risk & Trading Platform (docs/patterns/reference-real-time-risk.md), Trade Ledger +
-# Risk Read Models slice, running entirely locally - no cloud account required.
+# The Real-Time Risk & Trading Platform (docs/patterns/reference-real-time-risk.md) - Trade Ledger,
+# Risk Read Models, Market-Data Aggregator and Valuation Service - running entirely locally, no cloud
+# account required.
+#
+#   # One-off, until benzene-dotnet PR #17 ships Benzene.Kafka.Streaming to nuget.org - see nuget.config:
+#   git clone https://github.com/daniellepelley/Benzene.git /tmp/benzene-dotnet
+#   git -C /tmp/benzene-dotnet checkout claude/kafka-stream-binding
+#   dotnet pack /tmp/benzene-dotnet/src/Benzene.Kafka.Streaming/Benzene.Kafka.Streaming.csproj \
+#     -c Release -p:PackageVersion=0.0.2-alpha.4 -o ./local-packages
 #
 #   docker compose up --build
 #   curl -X POST http://localhost:8081/trades -H 'content-type: application/json' \
 #     -d '{"book":"desk-a","symbol":"AAPL","side":"Buy","quantity":100,"price":150.25}'
 #   curl http://localhost:8082/books/desk-a/positions
+#   curl http://localhost:8082/positions/by-symbol/AAPL
+#   curl http://localhost:8083/valuations/by-symbol/AAPL     # after one bar interval
 #
-# The official AWS "DynamoDB Local" image (amazon/dynamodb-local) provides the table + stream -
-# genuinely free, no account/token needed (unlike LocalStack, whose community and pro images merged
-# in 2026: localstack/localstack:latest now requires signing up for a LocalStack account and an auth
-# token even for community-tier services, which would have quietly broken the "no cloud account"
-# promise here). Both application services build from the repo root's real-time-risk/dotnet folder
-# (they're ordinary NuGet consumers, so unlike benzene-dotnet's own example compose files there's no
-# need for a wider build context reaching into another repo).
+# ---------------------------------------------------------------------------------------------
+# Why these two infrastructure images
 #
-# DynamoDB Local has no bundled table-provisioning tool and no HTTP health endpoint to gate on, so
-# there's no dedicated init container here: TradeLedger creates the "trades" table itself at startup
-# (idempotently, with retries - see StartUp.cs), and RiskReadModels' TradeStreamProjector already
-# polls/retries until that table (and its stream) exists.
+# DynamoDB Local (amazon/dynamodb-local) provides the ledger's table + stream - genuinely free, no
+# account/token needed (unlike LocalStack, whose community and pro images merged in 2026:
+# localstack/localstack:latest now requires signing up for a LocalStack account and an auth token
+# even for community-tier services, which would have quietly broken the "no cloud account" promise
+# here). Found by actually running this stack in CI, not assumed.
+#
+# Kafka is the OFFICIAL apache/kafka image in KRaft mode - Apache-licensed, no signup, no separate
+# ZooKeeper container, and no vendor account of any kind. Redpanda (redpandadata/redpanda) was the
+# other candidate and is a lighter, Kafka-API-compatible broker, but the official image keeps the
+# broker under test identical to the one every reader's Kafka deployment actually is, and single-node
+# KRaft is already small enough that the weight argument doesn't bite. Confluent's cp-kafka image was
+# ruled out: it ships under the Confluent Community License, not Apache 2.0.
+#
+# Init containers: DynamoDB Local has no bundled provisioning tool, so TradeLedger creates the
+# "trades" table itself at startup (idempotently, with retries - see StartUp.cs). The Kafka image
+# DOES ship the admin CLI, so the two topics are created by a one-shot kafka-init service instead of
+# left to broker-side auto-creation. That is not ceremony: auto-created topics get one partition,
+# which would silently collapse the shard-per-symbol property the whole streaming pattern rests on,
+# and librdkafka consumers don't auto-create at all (allow.auto.create.topics defaults to false), so
+# the Valuation Service would sit logging unknown-topic warnings until the first bar was produced.
+#
+# To eyeball the event stream while it runs:
+#   docker compose exec kafka /opt/kafka/bin/kafka-console-consumer.sh \
+#     --bootstrap-server kafka:9092 --topic bar-closed --from-beginning --property print.key=true
+# ---------------------------------------------------------------------------------------------
 services:
   dynamodb-local:
     image: amazon/dynamodb-local:latest
     ports:
       - "8000:8000"
+
+  kafka:
+    image: apache/kafka:4.1.0
+    environment:
+      # Single-node KRaft: this one process is both the broker and the controller quorum, which is
+      # what removes the ZooKeeper container older Kafka compose files needed.
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      # Advertised on the compose network name only: every client here is a sibling container. Nothing
+      # is published to the host, so a stale advertised address can't send a host client somewhere
+      # that doesn't answer - use `docker compose exec kafka ...` to poke at topics instead.
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      # One node, so nothing can be replicated anywhere; the defaults (3) would leave the internal
+      # topics permanently under-replicated and the consumer groups unable to commit.
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      # Don't sit out the default 3s join delay on every consumer-group formation - there is exactly
+      # one consumer per group here and it costs the demo six seconds of looking broken.
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    healthcheck:
+      test: ["CMD", "/opt/kafka/bin/kafka-broker-api-versions.sh", "--bootstrap-server", "kafka:9092"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 20s
+
+  kafka-init:
+    image: apache/kafka:4.1.0
+    depends_on:
+      kafka:
+        condition: service_healthy
+    # Three partitions on each topic so a symbol's ticks (keyed by symbol) genuinely land on different
+    # partitions and PartitionBy(r => r.TopicPartition) has something to partition - see the note
+    # above on why this isn't left to auto-creation. --if-not-exists keeps `docker compose up` after a
+    # restart idempotent.
+    command: >
+      bash -c "
+      /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists
+        --topic market-data-ticks --partitions 3 --replication-factor 1 &&
+      /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists
+        --topic bar-closed --partitions 3 --replication-factor 1 &&
+      /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list"
+    restart: "no"
 
   trade-ledger:
     build:
@@ -51,3 +125,52 @@ services:
       - "8082:8080"
     depends_on:
       - dynamodb-local
+
+  # The synthetic market-data feed. A demo-only fixture standing in for a real tick source, kept as
+  # its own image and its own compose service precisely so it is obvious it is not part of the
+  # platform - see TickGenerator/Program.cs.
+  tick-generator:
+    build:
+      context: .
+      dockerfile: TickGenerator/Dockerfile
+    image: benzene-patterns-tick-generator:compose
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - MARKET_DATA_TOPIC=market-data-ticks
+      - TICK_INTERVAL_MS=250
+      - SYMBOLS=AAPL,MSFT,GOOG
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+
+  market-data-aggregator:
+    build:
+      context: .
+      dockerfile: MarketDataAggregator/Dockerfile
+    image: benzene-patterns-market-data-aggregator:compose
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - MARKET_DATA_TOPIC=market-data-ticks
+      # The pattern's bar is one minute, and 60 is the service's default. Ten seconds here so the demo
+      # (and CI) sees a bar close - and a valuation appear - within seconds instead of after a full
+      # minute of staring at a prompt. Nothing else depends on the value; see StartUp.BarInterval.
+      - BAR_INTERVAL_SECONDS=10
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+
+  valuation-service:
+    build:
+      context: .
+      dockerfile: ValuationService/Dockerfile
+    image: benzene-patterns-valuation-service:compose
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - RISK_READ_MODELS_URL=http://risk-read-models:8080
+    ports:
+      - "8083:8080"
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+      risk-read-models:
+        condition: service_started
