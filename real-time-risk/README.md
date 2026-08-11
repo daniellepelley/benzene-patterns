@@ -196,6 +196,21 @@ that *is* total P&L, but that's a property of the book's history, not something 
 assert — so it is named for what it computes. **Adding weighted-average cost-basis tracking to the
 ledger projection, and only then a real unrealized-P&L field, is a named follow-up** (see the roadmap).
 
+### A failed revaluation is skipped, not retried — and that's the right call here
+
+Benzene's `MessageHandler` catches a handler exception and turns it into a `ServiceUnavailable`
+*result* rather than letting it propagate, so the Kafka worker acknowledges the record either way;
+`CommitOnlyOnSuccess` only withholds an offset when the *pipeline* throws. A `bar-closed` whose
+read-model call fails is therefore logged and passed over.
+
+That's fine here, and it was verified rather than assumed: with Risk Read Models stopped, each bar's
+revaluation failed and was skipped, and the moment the read model came back the *next* bar produced a
+complete, correct valuation for every exposed book. It works because this reaction is a **full
+recomputation from current read-model state**, not an increment — a skipped bar costs one bar
+interval of staleness and nothing accumulates wrong. The aggregator's fold *does* accumulate, which
+is precisely why that side has real per-partition checkpointing and a replay guard and this side
+doesn't need either.
+
 ### Two bits of glue that belong in the framework, not here
 
 Both are flagged in code and should be raised upstream:

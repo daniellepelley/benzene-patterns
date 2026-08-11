@@ -44,10 +44,25 @@ public class StartUp : BenzeneStartUp
         });
 
         // The inbound half of the choreography. Per-record UseKafka, not UseKafkaStream: one closed
-        // bar is one reaction. CommitOnlyOnSuccess + CatchHandlerExceptions=false is Benzene's
-        // at-least-once combination (the two are validated together at worker start-up) - if the
-        // read-model call fails, the offset is not stored and the bar is redelivered, rather than
-        // silently skipped and the mark lost until the next window.
+        // bar is one reaction.
+        //
+        // Offsets are left on Confluent.Kafka's defaults, and that is a decision, not an oversight.
+        // BenzeneKafkaConfig.CommitOnlyOnSuccess only withholds an offset when the *pipeline* throws,
+        // and a handler exception never gets that far: Benzene's MessageHandler catches it and
+        // returns ServiceUnavailable (see Benzene.Core.MessageHandlers/MessageHandler.cs), so the
+        // record is acknowledged either way. Turning it on would therefore buy nothing here while
+        // dragging in its mandatory CatchHandlerExceptions=false, which stops the whole worker on the
+        // first pipeline-level fault - a bad trade for a service whose dependency is another
+        // service's HTTP endpoint.
+        //
+        // Verified by running it: with Risk Read Models down, each bar's revaluation failed, was
+        // logged, and was skipped; when the read model came back the *next* bar produced a complete,
+        // correct valuation for every exposed book. That is safe precisely because this reaction is a
+        // full recomputation from current read-model state, not an increment - a skipped bar costs
+        // one bar interval of staleness and nothing accumulates wrong. (The aggregator's fold *does*
+        // accumulate, which is exactly why that side has real checkpointing and a replay guard.)
+        // A service that needed the bar itself to survive would have to fail the pipeline, not the
+        // handler.
         services.AddBenzeneWorker(worker => worker.UseKafka<string, string>(
             new BenzeneKafkaConfig
             {
@@ -61,9 +76,7 @@ public class StartUp : BenzeneStartUp
                 // The Benzene topic and the Kafka topic are the same string on this transport - see
                 // Topics.BarClosed's remarks - so subscribing to the Kafka topic is what routes
                 // [Message("bar-closed")].
-                Topics = new[] { Topics.BarClosed },
-                CatchHandlerExceptions = false,
-                CommitOnlyOnSuccess = true
+                Topics = new[] { Topics.BarClosed }
             },
             kafka => kafka.UseMessageHandlers()));
     }
