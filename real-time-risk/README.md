@@ -10,12 +10,20 @@ at a time, in every Benzene language port.
 
 | Service | Pattern | .NET | Go | TypeScript | Python |
 |---|---|---|---|---|---|
-| Trade Ledger | [Event sourcing](https://github.com/daniellepelley/Benzene/blob/main/docs/patterns/event-sourcing.md) | ✅ | — | — | — |
-| Risk Read Models | [CQRS & read models](https://github.com/daniellepelley/Benzene/blob/main/docs/patterns/cqrs-read-models.md) | ✅ | — | — | — |
+| Trade Ledger | [Event sourcing](https://github.com/daniellepelley/Benzene/blob/main/docs/patterns/event-sourcing.md) | ✅ | ✅¹ | — | — |
+| Risk Read Models | [CQRS & read models](https://github.com/daniellepelley/Benzene/blob/main/docs/patterns/cqrs-read-models.md) | ✅ | ✅ | — | — |
 | Market-Data Aggregator | [Stream processing](https://github.com/daniellepelley/Benzene/blob/main/docs/patterns/streaming-processing.md) | not started | — | — | — |
 | Valuation Service | [Choreography](https://github.com/daniellepelley/Benzene/blob/main/docs/patterns/choreography.md) | not started | — | — | — |
 | Risk Coordinator | [Map-reduce](https://github.com/daniellepelley/Benzene/blob/main/docs/patterns/map-reduce.md) | not started | — | — | — |
 | Pricing Service | gRPC streaming | not started | — | — | — |
+
+¹ The Go Trade Ledger's event store is **app-local** (`go/eventstore`), not a framework package:
+benzene-go has no equivalent of `Benzene.EventSourcing` / `.EventSourcing.DynamoDb`, so the port
+hand-rolls the same conditional-write append + query read against the identical DynamoDB item shape
+(the single biggest cross-language parity gap — see [PARITY-FINDINGS.md](PARITY-FINDINGS.md) §3.1 and
+[go/PARITY-NOTES.md](go/PARITY-NOTES.md)). The Go port runs as `net/http` + a background stream
+poller (`go/README.md`), the same local-slice substitute for a Streams-triggered Lambda that the
+.NET port uses.
 
 Built in the order the reference doc itself recommends ("Building it, in order" §): Trade Ledger
 first (everything else derives from its events), then Risk Read Models (now the business can *see*

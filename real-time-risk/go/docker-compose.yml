@@ -1,0 +1,50 @@
+name: benzene-patterns-real-time-risk-go
+
+# The Real-Time Risk & Trading Platform (docs/patterns/reference-real-time-risk.md), Trade Ledger +
+# Risk Read Models slice - the Go port of real-time-risk/dotnet/docker-compose.yml, running
+# entirely locally with no cloud account required.
+#
+#   docker compose up --build
+#   curl -X POST http://localhost:8081/trades -H 'content-type: application/json' \
+#     -d '{"book":"desk-a","symbol":"AAPL","side":"Buy","quantity":100,"price":150.25}'
+#   curl http://localhost:8082/books/desk-a/positions
+#
+# The official AWS "DynamoDB Local" image provides the table + stream - genuinely free, no
+# account/token needed. Both application services build from real-time-risk/go/ (the whole Go
+# module is the build context, so each binary resolves the local packages).
+#
+# DynamoDB Local has no bundled table-provisioning tool and no HTTP health endpoint to gate on, so
+# there is no dedicated init container: trade-ledger creates the "trades" table itself at startup
+# (idempotently, with retries - see tradeledger/provisioning.go), and risk-read-models' projector
+# polls/retries until that table (and its stream) exists.
+services:
+  dynamodb-local:
+    image: amazon/dynamodb-local:latest
+    ports:
+      - "8000:8000"
+
+  trade-ledger:
+    build:
+      context: .
+      dockerfile: cmd/trade-ledger/Dockerfile
+    image: benzene-patterns-trade-ledger-go:compose
+    environment:
+      - DYNAMODB_SERVICE_URL=http://dynamodb-local:8000
+      - TRADES_TABLE_NAME=trades
+    ports:
+      - "8081:8080"
+    depends_on:
+      - dynamodb-local
+
+  risk-read-models:
+    build:
+      context: .
+      dockerfile: cmd/risk-read-models/Dockerfile
+    image: benzene-patterns-risk-read-models-go:compose
+    environment:
+      - DYNAMODB_SERVICE_URL=http://dynamodb-local:8000
+      - TRADES_TABLE_NAME=trades
+    ports:
+      - "8082:8080"
+    depends_on:
+      - dynamodb-local
