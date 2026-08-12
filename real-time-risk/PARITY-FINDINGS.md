@@ -161,5 +161,38 @@ Concrete, in rough priority order (highest parity leverage first):
 
 ---
 
+## 6. Confirmed by actually building the ports (Go + Python)
+
+The sections above are a static audit. Two ports of the runnable slice (Trade Ledger + Risk Read
+Models) have now been **built and unit-tested** against the real frameworks, which both confirmed the
+audit and turned up finer-grained gaps only implementation reveals. Each port carries its own
+`PARITY-NOTES.md` ([go](go/PARITY-NOTES.md), [python](python/PARITY-NOTES.md)).
+
+- **Go** ([`go/`](go/)) — consumes the genuinely-published `benzene-go` module (via its module-proxy
+  pseudo-version; no tag needed). 20 tests green. Gaps hit: (a) event sourcing missing → app-local
+  `eventstore/` with the shared item shape; (b) **route params are not bound into the request model and
+  a handler has no way to read inbound headers/route params** (`InvocationContext` is under an
+  unexported key; only outbound `SetResponseHeader` is exported) → `GET /books/{book}/positions` needs
+  a thin custom-dispatch adapter; (c) `httpbinding.writeNativeResponse` is unexported so the adapter
+  had to copy it.
+- **Python** ([`python/`](python/)) — consumes `benzene-python` **from source** (git subdirectories
+  pinned to a commit) because it isn't on PyPI. 24 tests green. Gaps hit: (a) event sourcing missing →
+  app-local `event_store.py` with the shared item shape; (b) **`BenzeneHttpApp` rejects non-`http` ASGI
+  scopes**, so there is no framework seam for per-process startup/shutdown (table provisioning, poller
+  lifecycle) → a thin `LifespanApp` wrapper adds it *around* Benzene dispatch; (c) the serializer
+  `to_jsonable` has **no `Enum` branch** → `TradeSide` is a `str`-enum to get `"Buy"`/`"Sell"` on the
+  wire. Notably **Python's HTTP binding DOES bind `{book}` into the request model** — so it needs *no*
+  route-param workaround, a concrete place where Python is ahead of Go.
+
+Net: the biggest gap (event sourcing) reproduced in **every** non-.NET port exactly as predicted; the
+smaller HTTP-binding gaps diverge *between* ports (Go lacks request route-param binding, Python has
+it), which is itself a parity signal — the ports are not at a uniform maturity even on the basics.
+
+Still outstanding (unchanged): TypeScript needs an npm scope (`@benzene` is taken — `@benzenejs`
+chosen) + publish rights before it can consume a published package; Go/Python releases need a tag
+pushed from an unrestricted environment (this repo's authoring sandbox blocks all tag creation).
+
+---
+
 *Generated as part of building this pattern's cross-language ports; superseded by the per-language
 status tables in [README.md](README.md) as services land.*
