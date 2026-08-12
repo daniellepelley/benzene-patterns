@@ -18,13 +18,26 @@ Each pattern is runnable locally via Docker Compose — no cloud account require
 
 | Pattern | .NET | Go | TypeScript | Python |
 |---|---|---|---|---|
-| [Real-Time Risk & Trading Platform](real-time-risk/README.md) | 🚧 in progress | not started | not started | not started |
+| [Real-Time Risk & Trading Platform](real-time-risk/README.md) | 🚧 slice (2/6) | 🚧 slice (2/6) | not started | 🚧 slice (2/6) |
+
+"slice (2/6)" = the runnable Trade Ledger + Risk Read Models slice (the first two of the six
+services) builds and is smoke-tested; the four advanced services are not started in any language.
+See the [pattern README](real-time-risk/README.md) for the per-service table and
+[real-time-risk/PARITY-FINDINGS.md](real-time-risk/PARITY-FINDINGS.md) for why the split is where it
+is.
 
 ## Status of this repo
 
-Early and incremental. The [real-time risk platform](real-time-risk/README.md) is being built one
-service at a time, in .NET first, per its own README's build order — see that document for exactly
-what's running today versus what's planned.
+Early and incremental. The [real-time risk platform](real-time-risk/README.md) started in .NET, and
+the same runnable slice is now ported to **Go** (on the published `benzene-go` module) and **Python**
+(from source, pending a PyPI release). Porting each service is itself new work wherever the target
+port lacks an equivalent to `Benzene.EventSourcing` — which so far is *every* non-.NET port, the
+headline finding in [PARITY-FINDINGS.md](real-time-risk/PARITY-FINDINGS.md). TypeScript is pending an
+npm scope (`@benzene` is taken by an unrelated project) before it can consume a published package.
+
+A note on the "published packages" convention below: it holds fully only for .NET (NuGet) today. Go
+is consumed at a module-proxy pseudo-version (resolvable, untagged); Python from git source (no PyPI
+release yet). Each port documents its actual consumption in its own README.
 
 ## Conventions
 
