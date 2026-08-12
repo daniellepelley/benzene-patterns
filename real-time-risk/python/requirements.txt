@@ -1,0 +1,15 @@
+# Runtime dependencies for the Real-Time Risk Python port's two services.
+#
+# benzene-python is NOT on PyPI (no release tag was ever pushed — PARITY-FINDINGS.md §1, note ²), so
+# the Benzene packages are consumed straight from the public GitHub repo, pinned to commit b073c95.
+# This is source-consumption pending a real PyPI release: the repo convention is *published* packages,
+# which isn't yet possible for Python (see PARITY-NOTES.md §1 and README.md).
+benzene-results @ git+https://github.com/daniellepelley/benzene-python@b073c95#subdirectory=packages/benzene-results
+benzene-core @ git+https://github.com/daniellepelley/benzene-python@b073c95#subdirectory=packages/benzene-core
+benzene-http @ git+https://github.com/daniellepelley/benzene-python@b073c95#subdirectory=packages/benzene-http
+benzene-aws @ git+https://github.com/daniellepelley/benzene-python@b073c95#subdirectory=packages/benzene-aws
+
+# The AWS SDK (the app-local event store, table provisioning, and the stream poller call it directly)
+# and the ASGI server that hosts each service.
+boto3>=1.26
+uvicorn>=0.30

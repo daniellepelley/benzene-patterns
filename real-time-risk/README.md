@@ -10,8 +10,8 @@ at a time, in every Benzene language port.
 
 | Service | Pattern | .NET | Go | TypeScript | Python |
 |---|---|---|---|---|---|
-| Trade Ledger | [Event sourcing](https://github.com/daniellepelley/Benzene/blob/main/docs/patterns/event-sourcing.md) | ✅ | ✅¹ | — | — |
-| Risk Read Models | [CQRS & read models](https://github.com/daniellepelley/Benzene/blob/main/docs/patterns/cqrs-read-models.md) | ✅ | ✅ | — | — |
+| Trade Ledger | [Event sourcing](https://github.com/daniellepelley/Benzene/blob/main/docs/patterns/event-sourcing.md) | ✅ | ✅¹ | — | ✅² |
+| Risk Read Models | [CQRS & read models](https://github.com/daniellepelley/Benzene/blob/main/docs/patterns/cqrs-read-models.md) | ✅ | ✅ | — | ✅ |
 | Market-Data Aggregator | [Stream processing](https://github.com/daniellepelley/Benzene/blob/main/docs/patterns/streaming-processing.md) | not started | — | — | — |
 | Valuation Service | [Choreography](https://github.com/daniellepelley/Benzene/blob/main/docs/patterns/choreography.md) | not started | — | — | — |
 | Risk Coordinator | [Map-reduce](https://github.com/daniellepelley/Benzene/blob/main/docs/patterns/map-reduce.md) | not started | — | — | — |
@@ -24,6 +24,15 @@ hand-rolls the same conditional-write append + query read against the identical 
 [go/PARITY-NOTES.md](go/PARITY-NOTES.md)). The Go port runs as `net/http` + a background stream
 poller (`go/README.md`), the same local-slice substitute for a Streams-triggered Lambda that the
 .NET port uses.
+
+² The Python Trade Ledger's event store is likewise **app-local** (`python/trade_ledger/event_store.py`):
+benzene-python has no event-sourcing package either, so the port hand-rolls the same conditional-write
+append + query read against the identical DynamoDB item shape (see [PARITY-FINDINGS.md](PARITY-FINDINGS.md)
+§3.1 and [python/PARITY-NOTES.md](python/PARITY-NOTES.md)). The Python port runs on benzene-http's ASGI
+binding (uvicorn) + a background stream poller (`python/README.md`) — the same local substitute for a
+Streams-triggered Lambda the other ports use. benzene-python isn't on PyPI yet, so the port consumes the
+framework from git pinned to commit `b073c95` (source-consumption pending a real release). Its HTTP
+path-param binding works out of the box (no workaround), unlike the Go port.
 
 Built in the order the reference doc itself recommends ("Building it, in order" §): Trade Ledger
 first (everything else derives from its events), then Risk Read Models (now the business can *see*

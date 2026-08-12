@@ -1,0 +1,21 @@
+# Risk Read Models service image. Build context is real-time-risk/python/ (see docker-compose.yml).
+#   docker build -f Dockerfile.risk-read-models -t benzene-patterns-py-risk-read-models:local .
+#
+# The Benzene packages are installed from git subdirectories pinned to commit b073c95 (benzene-python
+# isn't on PyPI yet — see requirements.txt / PARITY-NOTES.md); git is needed for that pip install.
+FROM python:3.12-slim
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+EXPOSE 8080
+# Serves GET /books/{book}/positions and runs the DynamoDB-Streams poller as a background task.
+CMD ["uvicorn", "risk_read_models.main:app", "--host", "0.0.0.0", "--port", "8080"]

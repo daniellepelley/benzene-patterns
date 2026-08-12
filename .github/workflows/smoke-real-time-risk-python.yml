@@ -1,0 +1,101 @@
+name: Smoke - Real-Time Risk (Python)
+
+# End-to-end smoke test for the Python Trade Ledger + Risk Read Models slice: build the images,
+# `docker compose up`, book a trade, and assert the read model eventually reflects it. Fully
+# self-contained (DynamoDB Local, no cloud credentials or account needed). Mirrors
+# smoke-real-time-risk-dotnet.yml.
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'real-time-risk/python/**'
+      - '.github/workflows/smoke-real-time-risk-python.yml'
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'real-time-risk/python/**'
+      - '.github/workflows/smoke-real-time-risk-python.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  COMPOSE_FILE: real-time-risk/python/docker-compose.yml
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compose up (build)
+        run: docker compose -f "$COMPOSE_FILE" up -d --build
+
+      - name: Wait for both services to accept requests
+        # "Up" here just means curl gets any HTTP response instead of connection-refused (status
+        # "000") - neither service has a dedicated health endpoint, and trade-ledger has no GET route
+        # at all (only POST /trades), so a 4xx/5xx still proves the app is listening.
+        run: |
+          for url in http://localhost:8081/trades http://localhost:8082/books/warmup/positions; do
+            ok=0
+            for i in $(seq 1 30); do
+              status=$(curl -s -o /dev/null -w '%{http_code}' "$url" || true)
+              if [ "$status" != "000" ]; then ok=1; break; fi
+              sleep 2
+            done
+            if [ "$ok" != "1" ]; then
+              echo "::error::$url never came up"
+              exit 1
+            fi
+          done
+
+      - name: Book a trade
+        run: |
+          curl -fsS -X POST http://localhost:8081/trades \
+            -H 'content-type: application/json' \
+            -d '{"book":"smoke-test","symbol":"AAPL","side":"Buy","quantity":100,"price":150.25}' \
+            -o book-trade-response.json
+          echo "--- book-trade-response.json ---"; cat book-trade-response.json
+          # A plain @http_endpoint response body is the handler's raw JSON payload (camelCase) - no
+          # envelope wrapper; the Benzene status maps onto the HTTP status instead.
+          jq -e '.version == 1' book-trade-response.json >/dev/null \
+            || { echo "::error::expected the first trade on a fresh book to be version 1"; exit 1; }
+
+      # The projection is eventually consistent (DynamoDB Streams -> the background poller), so poll
+      # until it catches up rather than asserting on the first read. 90 attempts (~3 minutes): the
+      # poller's own stream-discovery loop (wait for LatestStreamArn, 2s interval) plus its first
+      # get_records poll can take close to a minute on a loaded CI runner - headroom, not a logic bug
+      # (see the .NET workflow's note).
+      - name: Assert the read model reflects the booked trade
+        run: |
+          ok=0
+          for i in $(seq 1 90); do
+            curl -fsS http://localhost:8082/books/smoke-test/positions -o positions.json
+            projected=$(jq -r '.projectedThroughVersion' positions.json)
+            echo "attempt $i: projectedThroughVersion=$projected"
+            if [ "$projected" = "1" ]; then ok=1; break; fi
+            sleep 2
+          done
+          if [ "$ok" != "1" ]; then
+            echo "::error::read model never projected the booked trade"
+            cat positions.json
+            exit 1
+          fi
+          echo "--- positions.json ---"; cat positions.json
+          jq -e '.positions[] | select(.symbol == "AAPL" and .netQuantity == 100)' positions.json >/dev/null \
+            || { echo "::error::expected a 100-share AAPL position"; exit 1; }
+
+      - name: Dump logs on failure
+        if: failure()
+        run: |
+          docker compose -f "$COMPOSE_FILE" ps -a || true
+          for service in dynamodb-local trade-ledger risk-read-models; do
+            echo "::group::$service full logs"
+            docker compose -f "$COMPOSE_FILE" logs "$service" || true
+            echo "::endgroup::"
+          done
+
+      - name: Compose down
+        if: always()
+        run: docker compose -f "$COMPOSE_FILE" down -v || true

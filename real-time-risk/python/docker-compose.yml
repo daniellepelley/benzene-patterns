@@ -1,0 +1,48 @@
+name: benzene-patterns-real-time-risk-python
+
+# The Real-Time Risk & Trading Platform (docs/patterns/reference-real-time-risk.md), Trade Ledger +
+# Risk Read Models slice — the Python port, running entirely locally, no cloud account required.
+# Mirrors real-time-risk/dotnet/docker-compose.yml (same ports 8081/8082, same env, same shape).
+#
+#   docker compose up --build
+#   curl -X POST http://localhost:8081/trades -H 'content-type: application/json' \
+#     -d '{"book":"desk-a","symbol":"AAPL","side":"Buy","quantity":100,"price":150.25}'
+#   curl http://localhost:8082/books/desk-a/positions
+#
+# The official AWS "DynamoDB Local" image (amazon/dynamodb-local) provides the table + stream —
+# genuinely free, no account/token needed (unlike LocalStack, whose images now require a signup +
+# auth token; see real-time-risk/README.md). DynamoDB Local has no bundled table-provisioning tool
+# and no HTTP health endpoint to gate on, so there's no dedicated init container: trade-ledger creates
+# the "trades" table itself at startup (idempotently, with retries), and risk-read-models' stream
+# poller already retries until that table (and its stream) exists.
+services:
+  dynamodb-local:
+    image: amazon/dynamodb-local:latest
+    ports:
+      - "8000:8000"
+
+  trade-ledger:
+    build:
+      context: .
+      dockerfile: Dockerfile.trade-ledger
+    image: benzene-patterns-py-trade-ledger:compose
+    environment:
+      - DYNAMODB_SERVICE_URL=http://dynamodb-local:8000
+      - TRADES_TABLE_NAME=trades
+    ports:
+      - "8081:8080"
+    depends_on:
+      - dynamodb-local
+
+  risk-read-models:
+    build:
+      context: .
+      dockerfile: Dockerfile.risk-read-models
+    image: benzene-patterns-py-risk-read-models:compose
+    environment:
+      - DYNAMODB_SERVICE_URL=http://dynamodb-local:8000
+      - TRADES_TABLE_NAME=trades
+    ports:
+      - "8082:8080"
+    depends_on:
+      - dynamodb-local

@@ -1,0 +1,21 @@
+# Trade Ledger service image. Build context is real-time-risk/python/ (see docker-compose.yml).
+#   docker build -f Dockerfile.trade-ledger -t benzene-patterns-py-trade-ledger:local .
+#
+# The Benzene packages are installed from git subdirectories pinned to commit b073c95 (benzene-python
+# isn't on PyPI yet — see requirements.txt / PARITY-NOTES.md); git is needed for that pip install.
+FROM python:3.12-slim
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+EXPOSE 8080
+# The app provisions the "trades" table itself at startup (idempotent, with retries) before serving.
+CMD ["uvicorn", "trade_ledger.main:app", "--host", "0.0.0.0", "--port", "8080"]
