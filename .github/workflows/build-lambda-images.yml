@@ -1,0 +1,71 @@
+name: Build - Real-Time Risk Lambda images
+
+# Validates that every service's AWS Lambda container image PACKAGES correctly: it `docker build`s
+# all four Lambda images (Go x2, Python x2) so a broken Lambda entrypoint, Dockerfile, or dependency
+# set fails CI. It does NOT push to ECR and does NOT run the images - real Lambda execution needs an
+# AWS account (no credentials in this repo), so, like terraform-validate.yml, this proves the
+# artifacts are well-formed, not that they run on AWS. The local docker-compose smoke workflows
+# already prove the same handlers run end-to-end against DynamoDB Local.
+#
+# A build here confirms, per image: the Lambda entrypoint compiles/imports (Go `go build` of the
+# cmd/lambda-* binary; Python dependency resolution + the handler module's transitive imports at
+# image-build time is covered by the compose smoke tests, this job covers the image packaging), the
+# correct base image is used (provided.al2023 for Go, the AWS Lambda Python base for Python), and the
+# entrypoint/CMD is wired (`bootstrap` / `<module>.handler`).
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'real-time-risk/go/**'
+      - 'real-time-risk/python/**'
+      - '.github/workflows/build-lambda-images.yml'
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'real-time-risk/go/**'
+      - 'real-time-risk/python/**'
+      - '.github/workflows/build-lambda-images.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      # Each image is one matrix leg: its build context, its Dockerfile, and a tag. Adding a service's
+      # Lambda image later is one more entry here.
+      matrix:
+        include:
+          - name: go-trade-ledger
+            context: real-time-risk/go
+            dockerfile: real-time-risk/go/cmd/lambda-trade-ledger/Dockerfile
+          - name: go-risk-read-models
+            context: real-time-risk/go
+            dockerfile: real-time-risk/go/cmd/lambda-risk-read-models/Dockerfile
+          - name: python-trade-ledger
+            context: real-time-risk/python
+            dockerfile: real-time-risk/python/Dockerfile.lambda-trade-ledger
+          - name: python-risk-read-models
+            context: real-time-risk/python
+            dockerfile: real-time-risk/python/Dockerfile.lambda-risk-read-models
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build ${{ matrix.name }} Lambda image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: false
+          load: true
+          tags: rtr-${{ matrix.name }}:lambda
+          # A PR shares the layer cache with the last main build so unchanged base/deps layers are
+          # reused - the same GHA cache the ecosystem uses; it never leaves the runner.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

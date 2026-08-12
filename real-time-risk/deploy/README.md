@@ -36,7 +36,7 @@ deployment rather than argued in a doc.
 | Service | AWS shape in this stack | Notes |
 |---|---|---|
 | Trade Ledger | Lambda (container) behind API Gateway `POST /trades` | Writes events to the DynamoDB table. |
-| Risk Read Models | Lambda (container): DynamoDB-stream event-source mapping **+** API Gateway `GET /books/{book}/positions` | One function, two triggers — for .NET/TS/Python. |
+| Risk Read Models | Lambda (container): DynamoDB-stream event-source mapping **+** API Gateway `GET /books/{book}/positions` | One function, two triggers — for **every** language (Go multiplexes on the event shape in one binary too). |
 | Market-Data Aggregator | Lambda (container) with a Kinesis event-source mapping | `enable_market_data`; off until a port ships it. |
 | Valuation Service | Lambda (container) on an EventBridge `bar:closed` rule | `enable_market_data`. |
 | Risk Coordinator | Lambda (container) on an EOD schedule, fans out Lambda-to-Lambda | `enable_risk_coordinator`. |
@@ -45,13 +45,29 @@ deployment rather than argued in a doc.
 Two deliberate accommodations, both language-driven, both absorbed by the *inputs* (never the resource
 shapes):
 
-- **Go is one-trigger-per-binary** (`awslambda.Start` takes a single handler). Where .NET/TS/Python
-  host the Risk Read Models stream trigger and HTTP query in one function, Go supplies two images and
-  the stack points the stream mapping and the API route at the respective functions. The table/stream/
-  API wiring is unchanged.
+- **Go is one-trigger-per-binary at the framework level** (`awslambda.Start` takes a single handler),
+  but the Risk Read Models binary recovers the multi-trigger shape itself: a small multiplexer inspects
+  the raw invocation JSON and delegates a DynamoDB-stream event to the projection binding and an API
+  Gateway v2 event to the HTTP query (`real-time-risk/go/cmd/lambda-risk-read-models`). So Go ships the
+  *same* single `risk-read-models` function as .NET/TS/Python — the stream event-source mapping and the
+  API route both point at it, and the stack has **no** Go-specific variant. (The `service_images` map
+  is still the one per-language input; it just always has the same two keys now.)
 - **Event sourcing is app-local outside .NET.** The table shape here (`pk`/`version` + `eventType`/
   `payload`/`timestamp`) matches `Benzene.EventSourcing.DynamoDb`; the other ports write that same
   shape by hand. The infra can't tell the difference, which is the point.
+
+### Caveat: the read model is in-memory (correct for the demo, not for production scale)
+
+Each port's Risk Read Models function projects into a **process-local, in-memory** store and serves the
+query from it. In one warm Lambda instance that is self-consistent (the instance queries what it
+projected). But Lambda scales to **many** instances, each with its own empty store, and AWS routes
+stream shards and API requests to whichever instance it likes — so a query can hit an instance that
+never saw the projecting record and return stale/empty positions, and a cold start begins empty. This
+is fine for the local one-process docker-compose slice and for proving the *hosting shape* (same
+handlers, stream trigger + HTTP query in one function), but it is **not** a correct production read
+model. The production answer is a **shared** store — project into DynamoDB/ElastiCache and read the
+query from it — which is out of scope for this slice. See the Go/Python `PARITY-NOTES.md` for the same
+finding recorded per language.
 
 ## Deploy flow
 
@@ -86,3 +102,13 @@ roadmap item 5) is what turns "the same system in every language" from a claim i
 - `terraform apply` — requires a real AWS account; not exercised by CI (no credentials in this repo).
   The stack is written to be applied by a user with their own account, exactly like the local
   docker-compose stacks need no cloud account.
+- **Lambda images** — `.github/workflows/build-lambda-images.yml` `docker build`s all four Lambda
+  images (Go ×2, Python ×2) on every push/PR that touches the ports, proving each image **packages**
+  correctly: the Lambda entrypoint compiles, the right base image is used (`provided.al2023` for Go,
+  the AWS Lambda Python base for Python), and the `bootstrap` / `<module>.handler` entrypoint is wired.
+  It does **not** push to ECR and does **not** run the images.
+- **Real-AWS Lambda execution** — **not tested in this repo.** Invoking the deployed functions behind a
+  real API Gateway + DynamoDB stream needs an AWS account, which CI doesn't have; the local
+  docker-compose smoke tests prove the *same handlers* run end-to-end against DynamoDB Local, and the
+  image-build + terraform-validate jobs prove the artifacts and stack are well-formed. The AWS
+  round-trip itself is left to a user deploying into their own account.

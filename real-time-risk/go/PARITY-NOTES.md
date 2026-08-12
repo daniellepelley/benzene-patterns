@@ -74,12 +74,68 @@ for the same reason (emulating Lambda + ESM locally is heavy), and on AWS both p
 real `awsdynamodb.Handler` in a Lambda unchanged. Recorded only to note benzene-go offers no local
 substitute either — the poller is hand-rolled in both languages.
 
-## 5. (Context, not worked around here) one trigger per Lambda binary (PARITY-FINDINGS §3.4)
+## 5. One trigger per Lambda binary — worked around with an event-shape multiplexer (PARITY-FINDINGS §3.4)
 
-Not exercised by this local slice (which uses `net/http` + a goroutine, no Lambda), but relevant to
-the shared deploy story: `awslambda.Start` takes a single handler, so on AWS the Go deployment would
-be **more, smaller functions** than the .NET/TS/Python one-function-multi-trigger shape. The shared
-Terraform must not assume a fixed function-to-service mapping across languages.
+`awslambda.Start` takes a **single** `awslambda.HandlerFunc`, and benzene-go is otherwise
+one-trigger-per-binary: `awslambda.HTTPHandler` adapts API Gateway events and `awsdynamodb.Handler`
+adapts DynamoDB-stream events, each as its own `HandlerFunc`. .NET/TS/Python instead ship a host that
+dispatches on the event **shape** inside one handler, so their Risk Read Models is naturally one
+function serving both the stream trigger and the HTTP query.
+
+**Worked around by** recovering that multi-trigger shape by hand: the AWS Lambda deployment of Risk
+Read Models ([`cmd/lambda-risk-read-models/main.go`](cmd/lambda-risk-read-models/main.go)) wraps a
+small **event-shape multiplexer** `HandlerFunc` that inspects the raw invocation `json.RawMessage`
+with a cheap structural probe and delegates:
+
+- a DynamoDB-stream event (top-level `"Records"` whose first record has
+  `"eventSource":"aws:dynamodb"`) → `awsdynamodb.Handler(builder)`, which dispatches each record on
+  topic `"{tableName}:INSERT"` (e.g. `"rtr-go-trades:INSERT"`); an in-Lambda handler registered on
+  that topic folds the record into the shared store via `BookPositionsStore.Apply` (the `awsdynamodb`
+  binding has already unmarshalled the `NewImage` to plain JSON, so the handler just reads
+  `payload` + `version`);
+- an API Gateway HTTP API v2 event (`"requestContext"`/`"routeKey"`/`"rawPath"`, no such `Records`) →
+  the HTTP query adapter.
+
+The upshot: **risk-read-models is a single Lambda function in Go too**, so the shared Terraform (one
+`risk-read-models` function, one stream event-source mapping AND one API route both pointing at it) is
+uniform across every language — no Go-specific "two images, one trigger each" variant. The trade-ledger
+deployment ([`cmd/lambda-trade-ledger/main.go`](cmd/lambda-trade-ledger/main.go)) needs no multiplexer:
+it has one trigger (POST /trades) and is a plain `awslambda.Start(awslambda.HTTPHandler(...))`.
+
+**`awslambda.HTTPHandler` does NOT bind route params any better than `httpbinding`** (gap #2, confirmed
+on the Lambda path). It uses the same `httpbinding.RouteTable` and delivers a captured `{book}` only as
+a `route-book` **wire header** — which a handler still cannot read. So the HTTP query branch reproduces
+the local `PositionsHTTPHandler` workaround for the API Gateway v2 event: match the event against the
+same route table to **capture `{book}`**, then dispatch `book:positions` through the same pipeline via
+`envelope.DispatchTopicResult` with a synthesized `{"book":"<book>"}` body, and marshal the
+`wire.Response` into the v2 response shape. Benzene dispatch is not bypassed; only the front door is
+bespoke — identical in spirit to the net/http host. The fix upstream is the same as gap #2 (bind
+`route-<name>` into the request, or export an inbound accessor).
+
+**Fix upstream (Lambda-specific):** an `awslambda` host that dispatches on the event shape (like the
+other ports') would remove the hand-written multiplexer entirely.
+
+## 6. In-memory read model does not survive Lambda horizontal scaling (honest limitation, not worked around)
+
+The Risk Read Models projection lives in a **process-local, in-memory** `BookPositionsStore`
+(documented as such in `riskreadmodels/store.go`). A single warm Lambda instance both projects (stream
+trigger) and serves (API trigger) into that one store, so within an instance a query is self-consistent
+with what that instance projected — which is exactly what the multiplexer above achieves, and enough to
+prove the hosting shape.
+
+But **Lambda scales to many concurrent instances, each with its own empty store**, and AWS routes a
+stream shard and an API request to whichever instance it chooses. So on real AWS a query can hit an
+instance that never received the projecting record and return **stale or empty** positions, and a cold
+start begins from an empty store. This is fine for the local docker-compose slice (one process) and for
+proving the wiring, but it is **not a correct production read model**.
+
+**Not worked around — out of scope, and called out honestly.** The production answer is a **shared**
+store: the projection writes to DynamoDB/ElastiCache and the query reads from it, so any instance serves
+consistent data. That is a real design change (a second table + its IAM + read/write plumbing), beyond
+this slice's "prove the pattern and the hosting shape" goal. The shared deploy README records the same
+caveat cross-language. **Real-AWS execution is not tested in this repo** either (no AWS account in CI);
+the image-build CI proves the Lambda image packages, and the docker-compose smoke test proves the same
+handlers run end-to-end locally.
 
 ---
 

@@ -97,6 +97,43 @@ that reads the same stream with boto3 and folds the same records. The wire shape
 handler sees) is identical, so a real Lambda-hosted projection is a hosting swap, not a rewrite —
 exactly the .NET design and the "same handlers, different host" property Benzene is built around.
 
+**The Lambda hosting swap is now realised** in [`risk_read_models_lambda.py`](risk_read_models_lambda.py)
+(and [`trade_ledger_lambda.py`](trade_ledger_lambda.py)): the same `RiskReadModelsStartUp` composition
+root, hosted on `AwsLambdaApp` instead of uvicorn. Because `AwsLambdaApp` already multiplexes trigger
+types in one handler (it dispatches on the event shape — API Gateway vs. DynamoDB stream), **no
+hand-written multiplexer is needed** (unlike the Go port, whose `awslambda.Start` takes a single
+handler): the module just registers the `GET /books/{book}/positions` query handler and a
+stream-projection handler on **one** registry over **one** shared `BookPositionsStore`, and pins the
+stream topic to `f"{table}:INSERT"` (via `AwsLambdaApp(dynamodb_topic=...)`) to match the Go port and
+the cross-port `"{table}:{eventName}"` convention. One caveat worth noting: benzene-python's
+`dynamodb_record_envelope` delivers the record's `dynamodb` projection with `NewImage` **still in
+DynamoDB AttributeValue encoding** (unlike the Go `awsdynamodb` binding, which decodes it to plain
+JSON), so the Lambda projection handler decodes the `NewImage` itself — the same decode the local
+poller's `_apply` does.
+
+---
+
+## 7. In-memory read model does not survive Lambda horizontal scaling (honest limitation, not worked around)
+
+The Risk Read Models projection lives in a **process-local, in-memory** `BookPositionsStore`
+(`risk_read_models/store.py`, documented as such). A single warm Lambda instance both projects (stream
+trigger) and serves (API trigger) into that one store, so within an instance a query is self-consistent
+with what that instance projected — enough to prove the hosting shape (and verified locally: feeding the
+one `risk_read_models_lambda.handler` a synthetic DynamoDB INSERT then an API Gateway v2 GET returns the
+projected position through the single multiplexing handler).
+
+But **Lambda scales to many instances, each with its own empty store**, and AWS routes stream shards and
+API requests to whichever instance it likes — so on real AWS a query can hit an instance that never
+projected the record and return **stale/empty** data, and a cold start begins empty. Fine for the local
+one-process docker-compose slice and for proving the hosting shape, but **not** a correct production read
+model.
+
+**Not worked around — out of scope, and stated honestly.** The production answer is a **shared** store
+(project into DynamoDB/ElastiCache; the query reads from it), a real design change beyond this slice's
+goal. The shared deploy README and the Go `PARITY-NOTES.md` record the same finding. **Real-AWS
+execution is not tested in this repo** (no AWS account in CI): the image-build CI proves the Lambda image
+packages, and the docker-compose smoke test proves the same handlers run end-to-end locally.
+
 ---
 
 ## 6. Minor: `to_jsonable` has no `Enum` branch — handled by design, not worked around

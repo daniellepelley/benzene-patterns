@@ -1,0 +1,22 @@
+# AWS Lambda container image for the Risk Read Models service (Python).
+#
+# Build context is real-time-risk/python/ (same as the Compose Dockerfiles).
+#   docker build -f Dockerfile.lambda-risk-read-models -t rtr-py-risk-read-models:lambda .
+#
+# Same shape as Dockerfile.lambda-trade-ledger: a git-capable first stage installs the git-pinned
+# Benzene packages + boto3 (benzene-python isn't on PyPI yet — PARITY-NOTES.md §1), then the AWS Lambda
+# Python 3.12 runtime base copies them in and runs the handler. This ONE image serves both of the
+# risk-read-models function's triggers — the DynamoDB-stream projection and the API Gateway query —
+# because AwsLambdaApp multiplexes on the event shape (see risk_read_models_lambda.py).
+FROM python:3.12-slim AS build
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /build
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt -t /deps
+
+FROM public.ecr.aws/lambda/python:3.12
+COPY --from=build /deps ${LAMBDA_TASK_ROOT}
+COPY . ${LAMBDA_TASK_ROOT}
+CMD [ "risk_read_models_lambda.handler" ]

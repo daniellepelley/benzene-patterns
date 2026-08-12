@@ -27,10 +27,12 @@ resource "aws_lambda_function" "trade_ledger" {
 }
 
 # --- Risk Read Models (CQRS) - DynamoDB-stream projector + HTTP query handler in one function --------
-# (.NET / TS / Python host both the stream trigger and the HTTP query in a single Lambda; Go, which is
-# one-trigger-per-binary, supplies two images and points both `risk-read-models` and a second key at
-# them - the infra doesn't care, see PARITY-FINDINGS.md §3.4. For the shared slice we model the common
-# single-function case.)
+# Every language ships this as a SINGLE function. .NET / TS / Python multiplex the stream trigger and
+# the HTTP query natively; Go, though one-trigger-per-binary at the framework level, multiplexes them
+# on the event shape inside one binary too (real-time-risk/go/cmd/lambda-risk-read-models). So this one
+# function - with both the stream event-source mapping AND the API route pointing at it - is uniform
+# across all four ports; no Go-specific two-function variant is needed (see PARITY-FINDINGS.md §3.4 and
+# the Go/Python PARITY-NOTES on the in-memory-read-model caveat).
 resource "aws_cloudwatch_log_group" "risk_read_models" {
   name              = "/aws/lambda/${local.name}-risk-read-models"
   retention_in_days = var.log_retention_days

@@ -1,0 +1,27 @@
+# AWS Lambda container image for the Trade Ledger service (Python).
+#
+# Build context is real-time-risk/python/ (same as the Compose Dockerfiles).
+#   docker build -f Dockerfile.lambda-trade-ledger -t rtr-py-trade-ledger:lambda .
+#
+# Final base is the AWS Lambda Python 3.12 runtime image (it bundles the Lambda Runtime Interface
+# Client, so CMD is just the handler path). The Benzene packages are installed from git subdirectories
+# pinned to commit b073c95 (benzene-python isn't on PyPI yet — see requirements.txt / PARITY-NOTES.md
+# §1), which needs `git`; rather than add a package manager to the minimal Lambda base, a first stage
+# with git installs the dependencies into a plain directory and the Lambda stage copies them in. Every
+# runtime dependency here (the pure-python Benzene packages + boto3/botocore) ships as a
+# platform-independent wheel, so deps built in the glibc builder run unchanged on the AL2023 base.
+FROM python:3.12-slim AS build
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /build
+COPY requirements.txt .
+# Install into a flat directory that the Lambda base puts on sys.path (LAMBDA_TASK_ROOT).
+RUN pip install --no-cache-dir -r requirements.txt -t /deps
+
+FROM public.ecr.aws/lambda/python:3.12
+# Dependencies first (rarely change), then the application code, both into ${LAMBDA_TASK_ROOT}.
+COPY --from=build /deps ${LAMBDA_TASK_ROOT}
+COPY . ${LAMBDA_TASK_ROOT}
+# Table pre-provisioned by Terraform; no provisioning at startup (see trade_ledger_lambda.py).
+CMD [ "trade_ledger_lambda.handler" ]

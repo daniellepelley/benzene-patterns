@@ -4,14 +4,52 @@
 #
 #   terraform workspace new dotnet   # (or typescript / python / go)
 #   terraform apply -var-file=dotnet.tfvars
+#
+# Two service image keys are REQUIRED, for every language:
+#   "trade-ledger"     - the HTTP command handler behind API Gateway (POST /trades).
+#   "risk-read-models" - the ONE function that BOTH projects the DynamoDB stream AND serves the query
+#                        (GET /books/{book}/positions). Every port ships this as a single function:
+#                        .NET/TS/Python multiplex triggers natively, and Go multiplexes HTTP + stream
+#                        on the event shape inside one binary too (cmd/lambda-risk-read-models), so the
+#                        stack is uniform - no Go-specific "two functions" variant.
+#
+# Pick ONE of the per-language blocks below (matching `language`), or write your own. The tag
+# convention here is `<service>:<language>-<tag>`, but any ECR image reference (tag or @sha256 digest)
+# works - Terraform only ever sees the opaque image URI.
 
 region   = "eu-west-1"
 language = "dotnet"
 
+# --- dotnet ---------------------------------------------------------------------------------------
 service_images = {
   "trade-ledger"     = "<account>.dkr.ecr.eu-west-1.amazonaws.com/rtr-trade-ledger:dotnet-<tag>"
   "risk-read-models" = "<account>.dkr.ecr.eu-west-1.amazonaws.com/rtr-risk-read-models:dotnet-<tag>"
 }
+
+# --- typescript -----------------------------------------------------------------------------------
+# language = "typescript"
+# service_images = {
+#   "trade-ledger"     = "<account>.dkr.ecr.eu-west-1.amazonaws.com/rtr-trade-ledger:typescript-<tag>"
+#   "risk-read-models" = "<account>.dkr.ecr.eu-west-1.amazonaws.com/rtr-risk-read-models:typescript-<tag>"
+# }
+
+# --- python ---------------------------------------------------------------------------------------
+# Images built from real-time-risk/python/Dockerfile.lambda-trade-ledger and
+# Dockerfile.lambda-risk-read-models.
+# language = "python"
+# service_images = {
+#   "trade-ledger"     = "<account>.dkr.ecr.eu-west-1.amazonaws.com/rtr-trade-ledger:python-<tag>"
+#   "risk-read-models" = "<account>.dkr.ecr.eu-west-1.amazonaws.com/rtr-risk-read-models:python-<tag>"
+# }
+
+# --- go -------------------------------------------------------------------------------------------
+# Images built from real-time-risk/go/cmd/lambda-trade-ledger/Dockerfile and
+# cmd/lambda-risk-read-models/Dockerfile (provided.al2023 custom runtime).
+# language = "go"
+# service_images = {
+#   "trade-ledger"     = "<account>.dkr.ecr.eu-west-1.amazonaws.com/rtr-trade-ledger:go-<tag>"
+#   "risk-read-models" = "<account>.dkr.ecr.eu-west-1.amazonaws.com/rtr-risk-read-models:go-<tag>"
+# }
 
 # Flip on once a port ships these services and pushes their images (add the matching image keys above):
 # enable_market_data      = true
