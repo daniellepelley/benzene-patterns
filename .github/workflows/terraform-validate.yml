@@ -1,0 +1,43 @@
+name: Terraform - Real-Time Risk (shared stack)
+
+# Validates the shared, language-agnostic deployment stack. It authors no cloud resources (no
+# credentials, no `apply`) - it only proves the HCL is well-formed and internally consistent against
+# the real AWS provider schema, which the authoring sandbox can't do (its egress policy blocks the
+# Terraform registry). This is the source of truth for `terraform validate`.
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'real-time-risk/deploy/terraform/**'
+      - '.github/workflows/terraform-validate.yml'
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'real-time-risk/deploy/terraform/**'
+      - '.github/workflows/terraform-validate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: real-time-risk/deploy/terraform
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+
+      - name: Format check
+        run: terraform fmt -check -recursive
+
+      - name: Init (no backend, provider download only)
+        run: terraform init -backend=false -input=false
+
+      - name: Validate
+        run: terraform validate
