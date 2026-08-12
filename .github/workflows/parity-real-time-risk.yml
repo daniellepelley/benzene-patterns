@@ -1,0 +1,71 @@
+name: Parity - Real-Time Risk (all languages)
+
+# Runs the SAME language-agnostic black-box suite (real-time-risk/tests/parity-suite.sh) against every
+# language's compose stack. Each language brings up its own images (DynamoDB Local + Trade Ledger +
+# Risk Read Models) and must satisfy byte-for-byte the same observable behaviour. A divergence in any
+# language fails that matrix leg - this is the check behind "the same system in every language".
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'real-time-risk/**'
+      - '.github/workflows/parity-real-time-risk.yml'
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'real-time-risk/**'
+      - '.github/workflows/parity-real-time-risk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Only languages whose runnable slice exists get a leg. Add 'typescript' here when its port
+        # lands - the suite itself never changes, which is the whole point.
+        language: [ dotnet, go, python ]
+    name: parity (${{ matrix.language }})
+    env:
+      COMPOSE_FILE: real-time-risk/${{ matrix.language }}/docker-compose.yml
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compose up (build)
+        run: docker compose -f "$COMPOSE_FILE" up -d --build
+
+      - name: Wait for both services to accept requests
+        run: |
+          for url in http://localhost:8081/trades http://localhost:8082/books/warmup/positions; do
+            ok=0
+            for i in $(seq 1 30); do
+              status=$(curl -s -o /dev/null -w '%{http_code}' "$url" || true)
+              if [ "$status" != "000" ]; then ok=1; break; fi
+              sleep 2
+            done
+            if [ "$ok" != "1" ]; then echo "::error::$url never came up"; exit 1; fi
+          done
+
+      - name: Run the shared parity suite
+        env:
+          LEDGER_URL: http://localhost:8081
+          READMODEL_URL: http://localhost:8082
+        run: bash real-time-risk/tests/parity-suite.sh
+
+      - name: Dump logs on failure
+        if: failure()
+        run: |
+          docker compose -f "$COMPOSE_FILE" ps -a || true
+          for service in dynamodb-local trade-ledger risk-read-models; do
+            echo "::group::$service logs"
+            docker compose -f "$COMPOSE_FILE" logs "$service" || true
+            echo "::endgroup::"
+          done
+
+      - name: Compose down
+        if: always()
+        run: docker compose -f "$COMPOSE_FILE" down -v || true

@@ -116,6 +116,8 @@ way; swapping in a real Lambda-hosted handler later is a hosting change, not a r
    new work per language wherever that port doesn't yet have an equivalent to
    `Benzene.EventSourcing`/`Benzene.EventSourcing.DynamoDb` or DynamoDB Streams consumption - checking
    for that gap is part of each language's slice, not assumed away here.
-5. Once ≥2 languages implement the same service, a shared black-box test suite (HTTP requests in,
-   assertions on responses/read-model state) run against each language's compose stack would turn "the
-   same system in every language" into something asserted by a real test, not just claimed.
+5. ✅ **Done** (for the slice): a shared black-box test suite ([`tests/parity-suite.sh`](tests/parity-suite.sh))
+   — HTTP requests in, assertions on responses/read-model state — runs against every language's compose
+   stack via [one CI matrix](../.github/workflows/parity-real-time-risk.yml) (.NET, Go, Python today),
+   turning "the same system in every language" into something asserted by a real test, not just claimed.
+   Extends to more languages by adding a matrix leg; the suite itself never changes.
