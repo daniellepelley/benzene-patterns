@@ -89,8 +89,10 @@ Because every language exposes the identical HTTP contract (`POST /trades`,
 `GET /books/{book}/positions`) and the identical eventual-consistency semantics (the response's
 `projectedThroughVersion` tells you when the projection has caught up), one language-agnostic test
 suite runs against any deployment — local docker-compose *or* a deployed API URL. Same requests, same
-assertions, regardless of the language under the hood. That suite (planned, per the root README's
-roadmap item 5) is what turns "the same system in every language" from a claim into a check.
+assertions, regardless of the language under the hood. That suite
+([`../tests/parity-suite.sh`](../tests/parity-suite.sh), run against every language by
+[one CI matrix](../../.github/workflows/parity-real-time-risk.yml)) is what turns "the same system in
+every language" from a claim into a check.
 
 ## Verification status (honest)
 
