@@ -1,0 +1,5 @@
+# Local build/venv artifacts - the compiled Go binary (named after its module dir), Python
+# bytecode, and the throwaway venv used to verify the service outside Docker.
+tenant-go/tenant-go
+**/__pycache__/
+**/.venv/

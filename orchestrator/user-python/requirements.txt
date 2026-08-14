@@ -1,0 +1,11 @@
+# benzene-results is pinned explicitly even though benzene-core already depends on it.
+# benzene-core 0.1.0b1 declares `benzene-results>=0.0.1`, but the only published
+# benzene-results is 0.1.0b1 - a pre-release, which pip will NOT select for a plain `>=`
+# specifier. Without this exact pin, `pip install benzene-core` fails with
+# "Could not find a version that satisfies the requirement benzene-results>=0.0.1".
+# An exact `==` pin is allowed to match a pre-release, so pinning it here fixes the install
+# without needing --pre. Remove once benzene-python publishes a stable benzene-results.
+benzene-results==0.1.0b1
+benzene-core==0.1.0b1
+benzene-http==0.1.0b1
+uvicorn==0.34.0
