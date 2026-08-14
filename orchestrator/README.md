@@ -41,7 +41,7 @@ example exists to prove.
 | Tenant | Go | `tenant:create`, `tenant:delete` | ✅ built, compiles against the published module |
 | User | Python | `user:create`, `user:delete` | ✅ built, verified end-to-end over `/benzene/invoke` |
 | Signup Orchestrator | .NET | `signup:start` | 🚧 **not yet built** — see [Next](#next) |
-| Billing | TypeScript | `billing:setup`, `billing:cancel` | ⛔ blocked — see [Blocked](#blocked-the-typescript-service) |
+| Billing | TypeScript | `billing:setup`, `billing:cancel` | ⏳ waiting on npm publish — see [below](#waiting-on-npm-the-typescript-service) |
 
 The two core services are real and independently verified. The orchestrator that ties them
 together is the remaining piece, so **there is no `docker compose up` yet** — that lands with it.
@@ -108,28 +108,30 @@ actions and compensations land on a Go service and a Python service, over one wi
 no language-specific client code. Building it four times would demonstrate the opposite of its
 point. See the root [README's Conventions](../README.md#conventions) for how both shapes coexist.
 
-## Blocked: the TypeScript service
+## Waiting on npm: the TypeScript service
 
 Billing was to be the third core service, in TypeScript, giving the saga a three-stage shape with
-an irreversible-effect stage last. It is **not buildable today**, and the reason is worth
-recording rather than working around:
+an irreversible-effect stage last. It is deferred **only until the TypeScript port finishes
+publishing** — no design decision is outstanding.
 
-This repo's convention is that each implementation consumes the **published** packages. The
-TypeScript port's packages declare themselves as `@benzene/core`, `@benzene/http`, etc. — but the
-**`@benzene` npm scope belongs to an unrelated project** ("Benzene", a GraphQL server, currently
-at `0.8.2`). `npm install @benzene/core` installs that GraphQL server, not this framework. So a
-TypeScript service here cannot install the packages it needs under the names the port uses.
+This repo's convention is that each implementation consumes the **published** packages.
+benzene-typescript publishes under **`@benzenejs/*`**, a scope the project owns, and the rename to
+it is already complete in that repo. Publishing is simply partway through: as of 2026-08-14,
+**25 of its 129 packages are on npm** — the run reached the `a*` range (`abstractions`, `ajv`,
+`auth-*`, `avro`, `aws-*`) and stopped on rate limiting. The packages a core service needs are in
+the pending set:
 
-This is **not** a "publish hasn't run yet" problem, and it will not clear by retrying: npm scopes
-are owned outright, so publishing any `@benzene/*` name from another account returns **403
-Forbidden**, not a rate limit. benzene-typescript also has no npm publish workflow at present
-(its CI covers build, conformance drift, and two AWS example deploys).
+| Package | Status (2026-08-14) |
+|---|---|
+| `@benzenejs/abstractions`, `@benzenejs/abstractions-message-handlers` | published `0.1.0-beta.1` |
+| `@benzenejs/core`, `@benzenejs/results`, `@benzenejs/core-message-handlers` | pending |
+| `@benzenejs/http`, `@benzenejs/express` | pending |
 
-Resolving it is a **benzene-typescript** decision, not one this repo can make: publish under a
-scope the project controls, or acquire `@benzene`. Checked 2026-08-14 — all of these are free:
-`benzene-core` and `benzene-abstractions` (unscoped), `@benzene-app/*`, and
-`@daniellepelley/*`. Until then the third core service is deferred rather than faked with a
-vendored copy, which would break the published-packages convention this repo rests on.
+So this one clears itself: re-run the publish, and the billing service becomes ordinary work.
+
+> Note for anyone searching npm directly: the unscoped **`@benzene`** scope is a *different,
+> unrelated project* (a GraphQL server by `hoangvvo`, holding `@benzene/core` and `@benzene/http`).
+> Benzene-the-framework is `@benzenejs/*`. Don't install from `@benzene/*`.
 
 ## Next
 
@@ -148,7 +150,7 @@ vendored copy, which would break the published-packages convention this repo res
    so any release after that resolves correctly; exact pins remain the safe choice regardless.
 2. **`docker-compose.yml`** — lands with the orchestrator, since a stack of two callee services
    and no caller has nothing to demonstrate.
-3. **Billing (TypeScript)** — once the npm scope above is resolved.
+3. **Billing (TypeScript)** — once the pending `@benzenejs/*` packages above are published.
 4. **A black-box test** driving `signup:start` twice (happy path, then the `@fail.example`
    rollback) and asserting the tenant is gone after the failure — the assertion that actually
    proves the saga's invariant rather than claiming it.

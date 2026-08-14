@@ -19,7 +19,7 @@ Each pattern is runnable locally via Docker Compose — no cloud account require
 | Pattern | Shape | .NET | Go | TypeScript | Python |
 |---|---|---|---|---|---|
 | [Real-Time Risk & Trading Platform](real-time-risk/README.md) | per-language | 🚧 in progress | not started | not started | not started |
-| [Orchestrator (signup saga)](orchestrator/README.md) | **polyglot** | 🚧 orchestrator | ✅ tenant | ⛔ blocked | ✅ user |
+| [Orchestrator (signup saga)](orchestrator/README.md) | **polyglot** | 🚧 orchestrator | ✅ tenant | ⏳ billing | ✅ user |
 
 ## Status of this repo
 
