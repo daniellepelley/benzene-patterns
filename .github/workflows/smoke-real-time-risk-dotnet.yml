@@ -29,7 +29,27 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Compose up (build)
-        run: docker compose -f "$COMPOSE_FILE" up -d --build
+        # Retried because the build's `dotnet restore` runs inside a fresh container with no NuGet
+        # cache, so it goes straight to nuget.org's CDN - and that has twice served this job a
+        # STALE version index: runs on 2026-08-14 failed with NU1102 "Unable to find package
+        # <id> with version (= 0.0.2-alpha.4)" reporting a truncated version list whose nearest
+        # match was an old four-part version (0.0.2.12-alpha / 0.0.2.13-alpha), i.e. an index with
+        # none of the 0.0.2-alpha.* versions in it at all. Every pinned package does have
+        # 0.0.2-alpha.4 published (since 2026-08-10), the identical commit passed on 2026-08-10
+        # and 2026-08-11, and each failure named a *different* package - so this is registry-side
+        # staleness, not a bad pin. Retry so a CDN hiccup doesn't red the branch; a genuine
+        # unsatisfiable pin still fails all three attempts and reports the same NU1102.
+        run: |
+          for attempt in 1 2 3; do
+            if docker compose -f "$COMPOSE_FILE" up -d --build; then
+              exit 0
+            fi
+            echo "::warning::compose build failed (attempt $attempt/3); retrying in 30s"
+            docker compose -f "$COMPOSE_FILE" down -v || true
+            sleep 30
+          done
+          echo "::error::compose build failed after 3 attempts"
+          exit 1
 
       - name: Wait for both services to accept requests
         # "Up" here just means curl gets any HTTP response instead of connection-refused (status
