@@ -120,20 +120,32 @@ TypeScript port's packages declare themselves as `@benzene/core`, `@benzene/http
 at `0.8.2`). `npm install @benzene/core` installs that GraphQL server, not this framework. So a
 TypeScript service here cannot install the packages it needs under the names the port uses.
 
+This is **not** a "publish hasn't run yet" problem, and it will not clear by retrying: npm scopes
+are owned outright, so publishing any `@benzene/*` name from another account returns **403
+Forbidden**, not a rate limit. benzene-typescript also has no npm publish workflow at present
+(its CI covers build, conformance drift, and two AWS example deploys).
+
 Resolving it is a **benzene-typescript** decision, not one this repo can make: publish under a
-scope the project controls (e.g. `@benzene-app/*` or unscoped `benzene-*`), or acquire the
-`@benzene` scope. Until then the third core service is deferred rather than faked with a vendored
-copy, which would break the published-packages convention this repo rests on.
+scope the project controls, or acquire `@benzene`. Checked 2026-08-14 — all of these are free:
+`benzene-core` and `benzene-abstractions` (unscoped), `@benzene-app/*`, and
+`@daniellepelley/*`. Until then the third core service is deferred rather than faked with a
+vendored copy, which would break the published-packages convention this repo rests on.
 
 ## Next
 
-1. **Signup Orchestrator (.NET)** — the remaining piece. `Benzene.Saga` is the engine the
-   pattern doc's own example uses. Note a real constraint found while planning it:
-   `Benzene.Saga` and `Benzene.Clients.Http` were last published at **`0.0.2-alpha.6`**, while
-   `Benzene.AspNet.Core` has moved on to `0.0.2.18-alpha`. The generations are not mixable, so the
-   orchestrator must pin **every** Benzene package to `0.0.2-alpha.6` (which does have an
-   `AspNet.Core` build) — or the saga has to be hand-rolled against the newer generation, which
-   would defeat the purpose of demonstrating the documented package. Pin to alpha.6.
+1. **Signup Orchestrator (.NET)** — the remaining piece. `Benzene.Saga` is the engine the pattern
+   doc's own example uses. **Pin every Benzene package to `0.0.2-alpha.6`** (or to `0.0.3-alpha.1`
+   or later once a release after 2026-08-14 exists), and do **not** use `--prerelease`:
+
+   benzene-dotnet's July 2026 switch from a four-part version scheme to dotted prereleases reused
+   base `0.0.2`, so `0.0.2.18-alpha` (published 2026-07-14) sorts *above* `0.0.2-alpha.6`
+   (published 2026-08-13) even though the latter is a month newer. Latest-prerelease resolution
+   therefore picked the July build for packages carrying both schemes, while `Benzene.Saga` and
+   `Benzene.Clients.Http` — added after the switch — only ever had `0.0.2-alpha.*`. Taking "latest
+   prerelease" of each gets two generations that were never built together, silently. Fixed
+   upstream by bumping the base to `0.0.3`
+   ([benzene-dotnet `6afaef0`](https://github.com/daniellepelley/benzene-dotnet/commit/6afaef0)),
+   so any release after that resolves correctly; exact pins remain the safe choice regardless.
 2. **`docker-compose.yml`** — lands with the orchestrator, since a stack of two callee services
    and no caller has nothing to demonstrate.
 3. **Billing (TypeScript)** — once the npm scope above is resolved.
