@@ -117,9 +117,9 @@ of the AWS Lambda invoke path"* — but it is registered as an `IBenzeneMessageC
 `UseBenzeneMessageOverHttp()` extension on `OutboundContext` to bind it into a route, the way
 `UseSqs`/`UseServiceBus`/`UseInProcess` do. The adapter uses documented seams only.
 
-**Two independent patterns in this repo have now needed it** — the real-time-risk map-reduce
-coordinator carries the same file — which is the argument for closing the gap upstream and deleting
-both copies.
+**Four independent patterns in this repo have now needed it** — the real-time-risk map-reduce
+coordinator, the transactional outbox, and the two-tier orchestrator all carry the same file, five
+copies in total — which is the argument for closing the gap upstream and deleting every one.
 
 ## Package pinning
 

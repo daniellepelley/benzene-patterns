@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/Contracts/">
+    <Project Path="Contracts/Benzene.Patterns.TwoTier.Contracts.csproj" />
+  </Folder>
+  <Folder Name="/Core/">
+    <Project Path="Core/BillingService/Benzene.Patterns.TwoTier.Core.BillingService.csproj" />
+    <Project Path="Core/TenantService/Benzene.Patterns.TwoTier.Core.TenantService.csproj" />
+    <Project Path="Core/UserService/Benzene.Patterns.TwoTier.Core.UserService.csproj" />
+  </Folder>
+  <Folder Name="/Orchestrator/">
+    <Project Path="Orchestrator/Benzene.Patterns.TwoTier.Orchestrator.csproj" />
+  </Folder>
+</Solution>

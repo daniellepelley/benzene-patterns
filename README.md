@@ -21,6 +21,7 @@ Each pattern is runnable locally via Docker Compose — no cloud account require
 | [Real-Time Risk & Trading Platform](real-time-risk/README.md) | 🚧 in progress | not started | not started | not started |
 | [The Modular Monolith, and the Road Out of It](modular-monolith/README.md) | ✅ | not started | not started | not started |
 | [The Transactional Outbox](transactional-outbox/README.md) | ✅ | not started | not started | not started |
+| [The Two-Tier Microservice Architecture](two-tier-architecture/README.md) | ✅ | not started | not started | not started |
 
 ## Status of this repo
 

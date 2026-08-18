@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Benzene.AspNet.Core" />
+    <PackageReference Include="Benzene.Clients" />
+    <PackageReference Include="Benzene.Http" />
+    <PackageReference Include="Benzene.Microsoft.Dependencies" />
+    <!-- The saga engine. Client-agnostic by design: it depends on Abstractions + Results only, and a
+         step's Do(...) calls IBenzeneMessageSender.SendAsync directly because that already returns
+         Task<IBenzeneResult<T>>. No adapter package needed. -->
+    <PackageReference Include="Benzene.Saga" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Contracts\Benzene.Patterns.TwoTier.Contracts.csproj" />
+  </ItemGroup>
+</Project>

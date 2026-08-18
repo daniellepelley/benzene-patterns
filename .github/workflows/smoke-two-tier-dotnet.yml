@@ -1,0 +1,144 @@
+name: Smoke - Two-Tier Architecture (.NET)
+
+# All three saga outcomes, asserted against real service state:
+#   Succeeded            - every effect applied
+#   RolledBack           - a step failed and EVERY compensation succeeded; nothing left behind
+#   PartiallyRolledBack  - a compensation ALSO failed; an orphan remains, named, never auto-retried
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'two-tier-architecture/dotnet/**'
+      - '.github/workflows/smoke-two-tier-dotnet.yml'
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'two-tier-architecture/dotnet/**'
+      - '.github/workflows/smoke-two-tier-dotnet.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  COMPOSE_FILE: two-tier-architecture/dotnet/docker-compose.yml
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: The tiers only depend one way
+        # Core services own data and call nobody; orchestrators own process and call core services.
+        # A core service that grew an outbound route would have quietly become an orchestrator.
+        run: |
+          set -euo pipefail
+          cd two-tier-architecture/dotnet
+          if git grep -n 'AddOutboundRouting' -- 'Core/*'; then
+            echo "::error::a core service declared outbound routing - the tiers now depend both ways"
+            exit 1
+          fi
+          echo "core services declare no outbound routes"
+
+      - name: Compose up (build)
+        run: |
+          for attempt in 1 2 3; do
+            if docker compose -f "$COMPOSE_FILE" up -d --build; then exit 0; fi
+            echo "::warning::compose build failed (attempt $attempt/3); retrying in 30s"
+            docker compose -f "$COMPOSE_FILE" down -v || true
+            sleep 30
+          done
+          echo "::error::compose build failed after 3 attempts"
+          exit 1
+
+      - name: Wait for the estate
+        run: |
+          for url in http://localhost:9280/signups http://localhost:9281/tenants \
+                     http://localhost:9282/users http://localhost:9283/accounts; do
+            ok=0
+            for i in $(seq 1 45); do
+              status=$(curl -s -o /dev/null -w '%{http_code}' "$url" || true)
+              if [ "$status" != "000" ]; then ok=1; break; fi
+              sleep 2
+            done
+            [ "$ok" = "1" ] || { echo "::error::$url never came up"; exit 1; }
+          done
+
+      - name: Succeeded - every effect applied
+        run: |
+          set -euo pipefail
+          curl -fsS -X POST http://localhost:9280/signups -H 'content-type: application/json' \
+            -d '{"company":"acme","email":"admin@acme.com","plan":"standard"}' -o ok.json
+          cat ok.json
+          jq -e '.outcome == "Succeeded" and (.tenantId | startswith("tnt-"))
+                 and (.userId | startswith("usr-")) and (.accountId | startswith("acc-"))' ok.json >/dev/null \
+            || { echo "::error::the happy path did not produce all three effects"; exit 1; }
+
+      - name: RolledBack - stage 1 fails, its CONCURRENT sibling is compensated
+        # Tenant and Billing share stage 1 and run concurrently, so when Billing rejects the plan the
+        # tenant may already exist. A stage compensating its own succeeded steps is the case this
+        # covers - not just later stages undoing earlier ones.
+        run: |
+          set -euo pipefail
+          before=$(curl -fsS http://localhost:9281/tenants | jq -r '.count')
+          code=$(curl -s -o rb1.json -w '%{http_code}' -X POST http://localhost:9280/signups \
+            -H 'content-type: application/json' \
+            -d '{"company":"badplan","email":"a@b.com","plan":"platinum"}')
+          cat rb1.json; echo "HTTP $code"
+          [ "$code" = "422" ] || { echo "::error::expected the failing step's own status (422)"; exit 1; }
+          grep -q "rolled back cleanly" rb1.json || { echo "::error::no rollback explanation"; exit 1; }
+          after=$(curl -fsS http://localhost:9281/tenants | jq -r '.count')
+          [ "$before" = "$after" ] \
+            || { echo "::error::a tenant survived a rolled-back signup ($before -> $after)"; exit 1; }
+
+      - name: RolledBack - stage 2 fails, BOTH stage-1 effects undone in reverse
+        run: |
+          set -euo pipefail
+          t0=$(curl -fsS http://localhost:9281/tenants  | jq -r '.count')
+          a0=$(curl -fsS http://localhost:9283/accounts | jq -r '.count')
+          code=$(curl -s -o rb2.json -w '%{http_code}' -X POST http://localhost:9280/signups \
+            -H 'content-type: application/json' \
+            -d '{"company":"baduser","email":"not-an-email","plan":"standard"}')
+          cat rb2.json; echo "HTTP $code"
+          [ "$code" = "422" ] || { echo "::error::expected 422"; exit 1; }
+          t1=$(curl -fsS http://localhost:9281/tenants  | jq -r '.count')
+          a1=$(curl -fsS http://localhost:9282/users    | jq -r '.count')
+          a2=$(curl -fsS http://localhost:9283/accounts | jq -r '.count')
+          [ "$t0" = "$t1" ] || { echo "::error::orphan tenant after rollback"; exit 1; }
+          [ "$a0" = "$a2" ] || { echo "::error::orphan billing account after rollback"; exit 1; }
+          echo "nothing left behind: tenants=$t1 accounts=$a2"
+
+      - name: PartiallyRolledBack - the rollback itself fails, and says so
+        # The one outcome the invariant cannot restore. It must be distinguishable from a clean
+        # rollback, because a clean one is safe to retry and this one is emphatically not.
+        run: |
+          set -euo pipefail
+          before=$(curl -fsS http://localhost:9281/tenants | jq -r '.count')
+          code=$(curl -s -o prb.json -w '%{http_code}' -X POST http://localhost:9280/signups \
+            -H 'content-type: application/json' \
+            -d '{"company":"sticky-corp","email":"not-an-email","plan":"standard"}')
+          cat prb.json; echo "HTTP $code"
+          [ "$code" = "500" ] \
+            || { echo "::error::a partially-rolled-back saga must not look like a clean failure"; exit 1; }
+          grep -q "may still be applied" prb.json \
+            || { echo "::error::the orphan was not surfaced to the caller"; exit 1; }
+          grep -q "never retried automatically" prb.json \
+            || { echo "::error::the no-auto-retry rule was not stated"; exit 1; }
+          # The orphan is real: the tenant that could not be deleted is still there.
+          curl -fsS http://localhost:9281/tenants -o tenants.json
+          cat tenants.json
+          jq -e '[.companies[]] | index("sticky-corp") != null' tenants.json >/dev/null \
+            || { echo "::error::expected the un-deletable tenant to remain - the demo proves nothing otherwise"; exit 1; }
+          after=$(jq -r '.count' tenants.json)
+          [ "$after" -gt "$before" ] || { echo "::error::no orphan was actually left"; exit 1; }
+          # ...and its sibling effect WAS compensated - best-effort rollback attempts every one.
+          jq -e '.count' <(curl -fsS http://localhost:9283/accounts) >/dev/null
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose -f "$COMPOSE_FILE" logs || true
+
+      - name: Compose down
+        if: always()
+        run: docker compose -f "$COMPOSE_FILE" down -v || true

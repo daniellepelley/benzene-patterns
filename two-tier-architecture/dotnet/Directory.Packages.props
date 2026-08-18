@@ -1,0 +1,40 @@
+<Project>
+
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <!-- The reason this file exists.
+
+         Every Benzene.* package here is an alpha, and nuget.org still hosts older releases of the
+         same ids under a legacy four-part scheme (0.0.2.18-alpha) whose numeric core sorts ABOVE
+         0.0.2-alpha.4's regardless of the prerelease label. A bare Version= is a MINIMUM to NuGet,
+         not a pin, so on a cold restore - and every Docker build here starts with no package cache -
+         an unpinned TRANSITIVE dependency can float up to an incompatible API shape. The
+         real-time-risk example hit exactly that in CI on three different packages, and its .csproj
+         files carry a hand-written [exact] bracket for every transitive package as a result.
+
+         Transitive pinning does that job once, centrally, instead: every transitive Benzene.*
+         resolves to the version declared below. One list to bump at the next release rather than
+         one per project. -->
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageVersion Include="Benzene.AspNet.Core" Version="[0.0.2-alpha.4]" />
+    <PackageVersion Include="Benzene.Abstractions" Version="[0.0.2-alpha.4]" />
+    <PackageVersion Include="Benzene.Abstractions.MessageHandlers" Version="[0.0.2-alpha.4]" />
+    <PackageVersion Include="Benzene.Abstractions.Messages" Version="[0.0.2-alpha.4]" />
+    <PackageVersion Include="Benzene.Abstractions.Middleware" Version="[0.0.2-alpha.4]" />
+    <PackageVersion Include="Benzene.Abstrations.Pipelines" Version="[0.0.2-alpha.4]" />
+    <PackageVersion Include="Benzene.Clients" Version="[0.0.2-alpha.4]" />
+    <PackageVersion Include="Benzene.Saga" Version="[0.0.2-alpha.4]" />
+    <PackageVersion Include="Benzene.CodeGen.SourceGenerators" Version="[0.0.2-alpha.4]" />
+    <PackageVersion Include="Benzene.Core" Version="[0.0.2-alpha.4]" />
+    <PackageVersion Include="Benzene.Core.MessageHandlers" Version="[0.0.2-alpha.4]" />
+    <PackageVersion Include="Benzene.Core.Messages" Version="[0.0.2-alpha.4]" />
+    <PackageVersion Include="Benzene.Core.Middleware" Version="[0.0.2-alpha.4]" />
+    <PackageVersion Include="Benzene.Http" Version="[0.0.2-alpha.4]" />
+    <PackageVersion Include="Benzene.Microsoft.Dependencies" Version="[0.0.2-alpha.4]" />
+    <PackageVersion Include="Benzene.Results" Version="[0.0.2-alpha.4]" />
+  </ItemGroup>
+
+</Project>

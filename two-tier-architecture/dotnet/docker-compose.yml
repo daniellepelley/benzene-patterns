@@ -1,0 +1,68 @@
+name: benzene-patterns-two-tier
+
+# The two-tier microservice architecture: a layer of data-owning CORE SERVICES under a layer of
+# process-owning ORCHESTRATORS, with the multi-service write run as a saga.
+#
+#   docker compose up --build
+#
+#   # Succeeds: tenant + billing (concurrently), then the user.
+#   curl -X POST http://localhost:9280/signups -H 'content-type: application/json' \
+#     -d '{"company":"acme","email":"admin@acme.com","plan":"standard"}'
+#
+#   # Rolls back cleanly - stage 1 fails, and its concurrent sibling is compensated.
+#   curl -X POST http://localhost:9280/signups -H 'content-type: application/json' \
+#     -d '{"company":"badplan","email":"a@b.com","plan":"platinum"}'
+#
+#   # Rolls back cleanly - stage 2 fails, and BOTH stage-1 effects are undone in reverse.
+#   curl -X POST http://localhost:9280/signups -H 'content-type: application/json' \
+#     -d '{"company":"baduser","email":"not-an-email","plan":"standard"}'
+#
+#   # PartiallyRolledBack - the rollback itself fails, leaving an orphan. The one outcome the saga's
+#   # invariant cannot restore, and the one that is never retried automatically.
+#   curl -X POST http://localhost:9280/signups -H 'content-type: application/json' \
+#     -d '{"company":"sticky-corp","email":"not-an-email","plan":"standard"}'
+#
+#   curl http://localhost:9281/tenants ; curl http://localhost:9282/users ; curl http://localhost:9283/accounts
+services:
+  # ── The orchestrator tier: owns process, owns no data ──────────────────────────────────────────
+  orchestrator:
+    build:
+      context: .
+      dockerfile: Orchestrator/Dockerfile
+    image: benzene-patterns-twotier-orchestrator:compose
+    environment:
+      - TENANT_URL=http://tenant:8080/benzene-message
+      - USER_URL=http://user:8080/benzene-message
+      - BILLING_URL=http://billing:8080/benzene-message
+    ports:
+      - "9280:8080"
+    depends_on:
+      - tenant
+      - user
+      - billing
+
+  # ── The core tier: one aggregate each, share-nothing, no outbound routes at all ────────────────
+  # Their read endpoints are published so a reader can check what a rolled-back saga left behind.
+  tenant:
+    build:
+      context: .
+      dockerfile: Core/TenantService/Dockerfile
+    image: benzene-patterns-twotier-tenant:compose
+    ports:
+      - "9281:8080"
+
+  user:
+    build:
+      context: .
+      dockerfile: Core/UserService/Dockerfile
+    image: benzene-patterns-twotier-user:compose
+    ports:
+      - "9282:8080"
+
+  billing:
+    build:
+      context: .
+      dockerfile: Core/BillingService/Dockerfile
+    image: benzene-patterns-twotier-billing:compose
+    ports:
+      - "9283:8080"
