@@ -1,0 +1,141 @@
+name: Smoke - Transactional Outbox (.NET)
+
+# Three properties, each asserted rather than described:
+#   1. The dual-write gap is REAL   - commit then crash, and the event never happens.
+#   2. CDC closes it                - orders written while the relay is down still get their events.
+#   3. Idempotency completes it     - a relay restart redelivers, and nothing takes effect twice.
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'transactional-outbox/dotnet/**'
+      - '.github/workflows/smoke-transactional-outbox-dotnet.yml'
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'transactional-outbox/dotnet/**'
+      - '.github/workflows/smoke-transactional-outbox-dotnet.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  COMPOSE_FILE: transactional-outbox/dotnet/docker-compose.yml
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compose up, WITHOUT the relay
+        # The relay is deliberately left down, so the first orders are written with nothing watching.
+        # That is the demo: if the events still arrive later, the event really is a consequence of
+        # the committed write rather than of anything the writer did.
+        run: |
+          for attempt in 1 2 3; do
+            if docker compose -f "$COMPOSE_FILE" up -d --build dynamodb-local orders notifications; then
+              exit 0
+            fi
+            echo "::warning::compose build failed (attempt $attempt/3); retrying in 30s"
+            docker compose -f "$COMPOSE_FILE" down -v || true
+            sleep 30
+          done
+          echo "::error::compose build failed after 3 attempts"
+          exit 1
+
+      - name: Wait for orders and notifications
+        run: |
+          for url in http://localhost:9180/orders http://localhost:9184/notifications; do
+            ok=0
+            for i in $(seq 1 45); do
+              status=$(curl -s -o /dev/null -w '%{http_code}' "$url" || true)
+              if [ "$status" != "000" ]; then ok=1; break; fi
+              sleep 2
+            done
+            [ "$ok" = "1" ] || { echo "::error::$url never came up"; exit 1; }
+          done
+
+      - name: Write three orders with the relay down
+        run: |
+          set -euo pipefail
+          for i in 1 2 3; do
+            curl -fsS -X POST http://localhost:9180/orders -H 'content-type: application/json' \
+              -d "{\"customer\":\"cdc-$i\",\"total\":1$i.50}" -o "order-$i.json"
+            jq -e '.path == "cdc"' "order-$i.json" >/dev/null
+          done
+          curl -fsS http://localhost:9184/notifications -o before.json
+          cat before.json
+          jq -e '.count == 0' before.json >/dev/null \
+            || { echo "::error::something published without a relay - the demo is not testing what it claims"; exit 1; }
+
+      - name: The dual-write gap is real
+        # Two orders that commit and then crash before publishing. Both rows exist; neither event
+        # ever will. A third, without the crash, publishes normally - so the difference is the gap
+        # and not the endpoint.
+        run: |
+          set -euo pipefail
+          for i in 1 2; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:9180/orders/naive \
+              -H 'content-type: application/json' \
+              -d "{\"customer\":\"lost-$i\",\"total\":99.00,\"crashBeforePublish\":true}")
+            echo "  crashing naive order $i -> HTTP $code"
+          done
+          curl -fsS -X POST http://localhost:9180/orders/naive -H 'content-type: application/json' \
+            -d '{"customer":"naive-ok","total":5.00}' -o naive-ok.json
+          sleep 3
+          curl -fsS http://localhost:9184/notifications -o after-naive.json
+          cat after-naive.json
+          # Only the non-crashing naive order got through. The two committed-then-crashed orders are
+          # lost events, permanently.
+          jq -e '.count == 1' after-naive.json >/dev/null \
+            || { echo "::error::expected exactly the one non-crashing naive order"; exit 1; }
+          jq -e '[.notifications[].customer] == ["naive-ok"]' after-naive.json >/dev/null \
+            || { echo "::error::the wrong order got through"; exit 1; }
+
+      - name: Start the relay - every event written during its outage still arrives
+        run: |
+          set -euo pipefail
+          docker compose -f "$COMPOSE_FILE" up -d relay
+          ok=0
+          for i in $(seq 1 45); do
+            curl -fsS http://localhost:9184/notifications -o now.json || true
+            # 3 CDC orders + the 1 naive one that published itself.
+            if [ "$(jq -r '.count' now.json)" = "4" ]; then ok=1; break; fi
+            sleep 2
+          done
+          cat now.json
+          [ "$ok" = "1" ] || { echo "::error::the relay did not deliver the backlog"; docker compose -f "$COMPOSE_FILE" logs relay; exit 1; }
+          jq -e '[.notifications[].customer] | sort == ["cdc-1","cdc-2","cdc-3","naive-ok"]' now.json >/dev/null \
+            || { echo "::error::wrong set of events delivered"; exit 1; }
+          # The lost ones stayed lost. This is the assertion that makes the whole example honest:
+          # CDC did not rescue the naive path, because the naive table has no stream.
+          jq -e '[.notifications[].customer] | any(startswith("lost-")) | not' now.json >/dev/null \
+            || { echo "::error::a crashed dual-write order somehow produced an event"; exit 1; }
+
+      - name: Restart the relay - redelivery takes effect once
+        # The relay re-reads from TRIM_HORIZON, so every event is delivered again with the SAME
+        # identity (the stream sequence number). At-least-once emission plus an idempotent consumer
+        # is the whole reliability contract: nothing lost, nothing double-applied.
+        run: |
+          set -euo pipefail
+          docker compose -f "$COMPOSE_FILE" restart relay
+          ok=0
+          for i in $(seq 1 45); do
+            curl -fsS http://localhost:9184/notifications -o redelivered.json || true
+            if [ "$(jq -r '.duplicates' redelivered.json)" -ge 3 ]; then ok=1; break; fi
+            sleep 2
+          done
+          cat redelivered.json
+          [ "$ok" = "1" ] || { echo "::error::no redelivery observed - the idempotency half is untested"; exit 1; }
+          jq -e '.count == 4' redelivered.json >/dev/null \
+            || { echo "::error::a redelivery took effect twice"; exit 1; }
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose -f "$COMPOSE_FILE" logs || true
+
+      - name: Compose down
+        if: always()
+        run: docker compose -f "$COMPOSE_FILE" down -v || true

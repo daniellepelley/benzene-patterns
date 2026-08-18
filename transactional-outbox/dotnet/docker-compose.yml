@@ -1,0 +1,61 @@
+name: benzene-patterns-transactional-outbox
+
+# The transactional outbox, Shape 1 (change data capture).
+#
+#   docker compose up --build
+#
+#   # The reliable path: write only. The relay turns the committed change into an event.
+#   curl -X POST http://localhost:9180/orders -H 'content-type: application/json' \
+#     -d '{"customer":"alice","total":42.00}'
+#
+#   # The bug, reproducibly: commit, then die before publishing. The order is real and the event
+#   # never happens - no amount of at-least-once delivery helps, because the emit did not occur.
+#   curl -X POST http://localhost:9180/orders/naive -H 'content-type: application/json' \
+#     -d '{"customer":"lost","total":42.00,"crashBeforePublish":true}'
+#
+#   curl http://localhost:9184/notifications
+#
+# The most convincing demo is to stop the relay, place several orders, and start it again: every
+# event still arrives. A relay outage is a delay, not a loss.
+services:
+  dynamodb-local:
+    image: amazon/dynamodb-local:latest
+    ports:
+      - "8000:8000"
+
+  # Owns the data. Publishes nothing - that is the pattern.
+  orders:
+    build:
+      context: .
+      dockerfile: OrdersService/Dockerfile
+    image: benzene-patterns-outbox-orders:compose
+    environment:
+      - DYNAMODB_SERVICE_URL=http://dynamodb-local:8000
+      - NOTIFICATIONS_URL=http://notifications:8080/benzene-message
+    ports:
+      - "9180:8080"
+    depends_on:
+      - dynamodb-local
+
+  # Reads the orders table's change stream and publishes order:created.
+  relay:
+    build:
+      context: .
+      dockerfile: Relay/Dockerfile
+    image: benzene-patterns-outbox-relay:compose
+    environment:
+      - DYNAMODB_SERVICE_URL=http://dynamodb-local:8000
+      - NOTIFICATIONS_URL=http://notifications:8080/benzene-message
+    ports:
+      - "9182:8080"
+    depends_on:
+      - dynamodb-local
+
+  # The downstream consumer, idempotent - the other half of the reliability contract.
+  notifications:
+    build:
+      context: .
+      dockerfile: Notifications/Dockerfile
+    image: benzene-patterns-outbox-notifications:compose
+    ports:
+      - "9184:8080"

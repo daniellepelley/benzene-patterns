@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/Contracts/">
+    <Project Path="Contracts/Benzene.Patterns.TransactionalOutbox.Contracts.csproj" />
+  </Folder>
+  <Folder Name="/Notifications/">
+    <Project Path="Notifications/Benzene.Patterns.TransactionalOutbox.Notifications.csproj" />
+  </Folder>
+  <Folder Name="/OrdersService/">
+    <Project Path="OrdersService/Benzene.Patterns.TransactionalOutbox.OrdersService.csproj" />
+  </Folder>
+  <Folder Name="/Relay/">
+    <Project Path="Relay/Benzene.Patterns.TransactionalOutbox.Relay.csproj" />
+  </Folder>
+</Solution>
