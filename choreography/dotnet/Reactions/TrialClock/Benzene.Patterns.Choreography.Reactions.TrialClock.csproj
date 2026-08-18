@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Benzene.Patterns.Choreography.Reactions.TrialClock</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Benzene.Core.MessageHandlers" />
+    <PackageReference Include="Benzene.Diagnostics" />
+    <PackageReference Include="Benzene.HostedService" />
+    <PackageReference Include="Benzene.Idempotency" />
+    <PackageReference Include="Benzene.Microsoft.Dependencies" />
+    <PackageReference Include="Benzene.RabbitMq" />
+    <PackageReference Include="Benzene.SelfHost" />
+    <PackageReference Include="RabbitMQ.Client" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The ONLY thing this reaction shares with the emitter. Not with the other reactions: they
+         reference this too, and each other not at all. -->
+    <ProjectReference Include="..\..\Contracts\Benzene.Patterns.Choreography.Contracts.csproj" />
+  </ItemGroup>
+</Project>

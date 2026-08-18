@@ -1,0 +1,211 @@
+name: Smoke - Event-Driven Choreography (.NET)
+
+# Choreography's claims are all negative - "the emitter does not know", "nothing else changed",
+# "the other reactions were unaffected" - and negatives are exactly what a README cannot prove. So
+# each one is either a grep over the source or an assertion against live service state:
+#
+#   the emitter names no consumer            grep
+#   no reaction knows another reaction       grep
+#   every reaction is idempotent             grep, then demonstrated with a duplicate publish
+#   one event reaches every reaction         live
+#   a failing reaction isolates              live
+#   trace context survives the hop           live (same correlation id in every journal)
+#   a fourth reaction needs no redeploy      live, against an already-running estate
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'choreography/dotnet/**'
+      - '.github/workflows/smoke-choreography-dotnet.yml'
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'choreography/dotnet/**'
+      - '.github/workflows/smoke-choreography-dotnet.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  COMPOSE_FILE: choreography/dotnet/docker-compose.yml
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: The emitter knows no consumer
+        # The whole pattern in one grep. An emitter that names a reaction has stopped choreographing
+        # and started orchestrating badly.
+        run: |
+          set -euo pipefail
+          cd choreography/dotnet
+          if git grep -niE 'welcomeemail|cachewarmer|trialclock|analytics|welcome-email|cache-warmer|trial-clock' -- 'Emitter/*'; then
+            echo "::error::the emitter names a consumer - it is no longer decoupled from its reactions"
+            exit 1
+          fi
+          echo "the emitter names no consumer"
+
+      - name: No reaction knows another reaction
+        # Reactions share the Contracts project and nothing else. A reference between two of them
+        # would be a hidden ordering constraint that the broker cannot see and nobody documented.
+        run: |
+          set -euo pipefail
+          cd choreography/dotnet/Reactions
+          fail=0
+          for me in */; do
+            me=${me%/}
+            for other in */; do
+              other=${other%/}
+              [ "$me" = "$other" ] && continue
+              if git grep -nI "Reactions\.$other" -- "$me" ; then
+                echo "::error::$me references $other"
+                fail=1
+              fi
+            done
+          done
+          [ "$fail" = "0" ] || exit 1
+          echo "each reaction is independent of the others"
+
+      - name: Every reaction is idempotent
+        # Delivery is at-least-once on every broker in this family. A reaction without this line is
+        # a reaction that will eventually do its thing twice, and the failure is silent.
+        run: |
+          set -euo pipefail
+          cd choreography/dotnet/Reactions
+          for d in */; do
+            grep -q 'UseIdempotency()' "$d/StartUp.cs" \
+              || { echo "::error::${d%/} has no idempotency middleware"; exit 1; }
+          done
+          echo "every reaction de-duplicates"
+
+      - name: Compose up (build)
+        run: |
+          for attempt in 1 2 3; do
+            if docker compose -f "$COMPOSE_FILE" up -d --build; then exit 0; fi
+            echo "::warning::compose build failed (attempt $attempt/3); retrying in 30s"
+            docker compose -f "$COMPOSE_FILE" down -v || true
+            sleep 30
+          done
+          echo "::error::compose build failed after 3 attempts"
+          exit 1
+
+      - name: Wait for the estate
+        run: |
+          for url in http://localhost:9380/tenants http://localhost:9381/emails \
+                     http://localhost:9382/warmed http://localhost:9383/trials; do
+            ok=0
+            for i in $(seq 1 60); do
+              status=$(curl -s -o /dev/null -w '%{http_code}' "$url" || true)
+              if [ "$status" = "200" ]; then ok=1; break; fi
+              sleep 2
+            done
+            [ "$ok" = "1" ] || { echo "::error::$url never came up"; exit 1; }
+          done
+
+      - name: One event, three reactions, one correlation id
+        run: |
+          set -euo pipefail
+          code=$(curl -s -o ok.json -w '%{http_code}' -X POST http://localhost:9380/tenants \
+            -H 'content-type: application/json' \
+            -d '{"company":"acme","email":"admin@acme.com","plan":"standard"}')
+          cat ok.json; echo "HTTP $code"
+          # 202, not 200. The tenant exists; nothing else is promised yet.
+          [ "$code" = "202" ] || { echo "::error::an emitter must not claim its reactions completed"; exit 1; }
+          cid=$(jq -r '.correlationId' ok.json)
+          sleep 5
+          for url in http://localhost:9381/emails http://localhost:9382/warmed http://localhost:9383/trials; do
+            curl -fsS "$url" -o j.json
+            cat j.json
+            jq -e --arg cid "$cid" '.count == 1 and (.entries[0].correlationId == $cid)' j.json >/dev/null \
+              || { echo "::error::$url did not react under the emitter's correlation id"; exit 1; }
+          done
+          echo "all three reacted, all under $cid"
+
+      - name: At-least-once - the same event three times, handled once
+        run: |
+          set -euo pipefail
+          before=$(curl -fsS http://localhost:9381/emails | jq -r '.count')
+          curl -fsS -X POST http://localhost:9380/tenants -H 'content-type: application/json' \
+            -d '{"company":"initech","email":"admin@initech.com","plan":"standard","emitTimes":3}' -o dup.json
+          jq -e '.emitted == 3' dup.json >/dev/null || { echo "::error::the duplicate publish did not happen"; exit 1; }
+          sleep 5
+          after=$(curl -fsS http://localhost:9381/emails | jq -r '.count')
+          [ "$after" = "$((before + 1))" ] \
+            || { echo "::error::three deliveries produced $((after - before)) reactions, not 1"; exit 1; }
+          echo "3 deliveries, 1 reaction"
+
+      - name: A failing reaction isolates - no rollback, and no collateral
+        # The load-bearing difference from the two-tier saga. Nothing is undone here, on purpose: an
+        # invariant that must hold across services belongs in an orchestrated saga, and this is a
+        # reaction that must merely happen.
+        run: |
+          set -euo pipefail
+          t0=$(curl -fsS http://localhost:9380/tenants | jq -r '.count')
+          w0=$(curl -fsS http://localhost:9382/warmed  | jq -r '.count')
+          code=$(curl -s -o bad.json -w '%{http_code}' -X POST http://localhost:9380/tenants \
+            -H 'content-type: application/json' \
+            -d '{"company":"bounce-corp","email":"nobody@bounce.example","plan":"standard"}')
+          cat bad.json; echo "HTTP $code"
+          [ "$code" = "202" ] || { echo "::error::a failing reaction must not fail the emitter"; exit 1; }
+          sleep 8
+          t1=$(curl -fsS http://localhost:9380/tenants | jq -r '.count')
+          w1=$(curl -fsS http://localhost:9382/warmed  | jq -r '.count')
+          [ "$t1" = "$((t0 + 1))" ] || { echo "::error::the tenant was rolled back - choreography has no rollback"; exit 1; }
+          [ "$w1" = "$((w0 + 1))" ] || { echo "::error::an unrelated reaction was affected by another's failure"; exit 1; }
+          # The failure was RETRIED rather than swallowed by its own first attempt: idempotency
+          # releases its claim when the handler reports failure.
+          curl -fsS http://localhost:9381/emails -o em.json
+          jq -e '[.entries[] | select(.what | startswith("FAILED"))] | length >= 2' em.json >/dev/null \
+            || { echo "::error::the failed reaction was not retried"; exit 1; }
+          echo "the emitter and the other reactions were untouched; the failure retried on its own"
+
+      - name: A reaction may decide it has nothing to do
+        run: |
+          set -euo pipefail
+          before=$(curl -fsS http://localhost:9383/trials | jq -r '.count')
+          curl -fsS -X POST http://localhost:9380/tenants -H 'content-type: application/json' \
+            -d '{"company":"umbrella","email":"admin@umbrella.com","plan":"enterprise"}' -o ent.json
+          sleep 5
+          after=$(curl -fsS http://localhost:9383/trials | jq -r '.count')
+          [ "$before" = "$after" ] || { echo "::error::an enterprise plan started a trial clock"; exit 1; }
+          echo "consumed, understood, and correctly no-op"
+
+      - name: A fourth reaction, added to a RUNNING estate
+        # The claim the whole pattern is bought for. Nothing else is rebuilt, restarted, or edited -
+        # the container ids of the four running services are checked before and after.
+        run: |
+          set -euo pipefail
+          before=$(docker compose -f "$COMPOSE_FILE" ps -q emitter welcome-email cache-warmer trial-clock | sort)
+          docker compose -f "$COMPOSE_FILE" --profile late up -d --build analytics
+          for i in $(seq 1 60); do
+            status=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:9384/signups || true)
+            if [ "$status" = "200" ]; then break; fi
+            sleep 2
+          done
+          after=$(docker compose -f "$COMPOSE_FILE" ps -q emitter welcome-email cache-warmer trial-clock | sort)
+          [ "$before" = "$after" ] \
+            || { echo "::error::adding a reaction disturbed a running service"; exit 1; }
+          # A fanout has no history, so the new subscriber starts empty and reacts from here on.
+          curl -fsS http://localhost:9384/signups -o a0.json
+          jq -e '.count == 0' a0.json >/dev/null \
+            || { echo "::error::a late fanout subscriber must not have a backlog"; exit 1; }
+          curl -fsS -X POST http://localhost:9380/tenants -H 'content-type: application/json' \
+            -d '{"company":"hooli","email":"admin@hooli.com","plan":"standard"}' -o h.json
+          sleep 5
+          curl -fsS http://localhost:9384/signups -o a1.json
+          cat a1.json
+          jq -e --arg cid "$(jq -r '.correlationId' h.json)" \
+             '.count == 1 and (.entries[0].correlationId == $cid)' a1.json >/dev/null \
+            || { echo "::error::the new reaction did not receive the next event"; exit 1; }
+          echo "a new consumer joined a live estate and nothing else moved"
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose -f "$COMPOSE_FILE" --profile late logs || true
+
+      - name: Compose down
+        if: always()
+        run: docker compose -f "$COMPOSE_FILE" --profile late down -v || true

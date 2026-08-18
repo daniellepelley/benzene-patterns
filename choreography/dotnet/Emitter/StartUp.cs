@@ -1,0 +1,70 @@
+using Benzene.Abstractions.Hosting;
+using Benzene.AspNet.Core;
+using Benzene.Clients;
+using Benzene.Clients.CorrelationId;
+using Benzene.Clients.TraceContext;
+using Benzene.Core.MessageHandlers;
+using Benzene.Core.MessageHandlers.DI;
+using Benzene.Diagnostics.Correlation;
+using Benzene.Microsoft.Dependencies;
+using Benzene.Patterns.Choreography.Contracts;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using RabbitMQ.Client;
+
+namespace Benzene.Patterns.Choreography.Emitter;
+
+/// <summary>
+/// The emitter's routing table. Read it and count the entries.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>One route. Three reactions. Four, once you start the analytics service.</b> The emitter has no
+/// list of consumers to keep in step, because a fanout exchange is not a list of destinations — it is
+/// a place to put an event. Compare the two-tier orchestrator's six routes to three named services:
+/// there, adding a step means editing the orchestrator. Here, adding a reaction means starting one.
+/// </para>
+/// <para>
+/// The two middleware in front of the transport are not decoration. <c>UseCorrelationId</c> and
+/// <c>UseW3CTraceContext</c> stamp the outbound headers, the adapter forwards them onto the AMQP
+/// message, and the consumer's headers getter lifts them back out. That is the chain that makes a
+/// reaction's span a child of the emitter's — and the mesh derives consumer edges from exactly that
+/// parentage. Choreography's classic complaint is that the flow is written down nowhere; the fix is
+/// three lines of pipeline and keeping trace propagation on.
+/// </para>
+/// </remarks>
+public class StartUp : BenzeneStartUp
+{
+    public override IConfiguration GetConfiguration()
+        => new ConfigurationBuilder().AddEnvironmentVariables().Build();
+
+    public override void ConfigureServices(IServiceCollection services, IConfiguration configuration)
+    {
+        var host = configuration["RABBIT_HOST"] ?? "rabbitmq";
+        var port = int.TryParse(configuration["RABBIT_PORT"], out var p) ? p : 5672;
+        var user = configuration["RABBIT_USER"] ?? "guest";
+        var password = configuration["RABBIT_PASSWORD"] ?? "guest";
+
+        // Blocking once at start-up, on purpose: the channel is a singleton shared by every send, and
+        // a service that cannot reach its broker has nothing useful to do. The retry loop inside is
+        // what makes this safe under compose.
+        services.AddSingleton(_ => Broker.ConnectAsync(host, port, user, password).GetAwaiter().GetResult());
+
+        services.AddSingleton<TenantStore>();
+
+        services.UsingBenzene(x => x
+            // The id UseCorrelationId() stamps onto every event's headers. Registered explicitly
+            // because Benzene does not assume it: correlation is opt-in, and the outbound middleware
+            // below is the thing that makes it leave the process.
+            .AddCorrelationId()
+            .AddMessageHandlers(typeof(CreateTenantHandler).Assembly)
+            .AddOutboundRouting(routing => routing
+                .Route(Topics.TenantCreated, pipeline => pipeline
+                    .UseCorrelationId(WireHeaders.CorrelationId)
+                    .UseW3CTraceContext()
+                    .UseRabbitMqExchange(Broker.Exchange))));
+    }
+
+    public override void Configure(IBenzeneApplicationBuilder app, IConfiguration configuration)
+        => app.UseHttp(http => http.UseMessageHandlers());
+}

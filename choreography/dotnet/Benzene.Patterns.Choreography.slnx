@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/Contracts/">
+    <Project Path="Contracts/Benzene.Patterns.Choreography.Contracts.csproj" />
+  </Folder>
+  <Folder Name="/Emitter/">
+    <Project Path="Emitter/Benzene.Patterns.Choreography.Emitter.csproj" />
+  </Folder>
+  <Folder Name="/Reactions/">
+    <Project Path="Reactions/Analytics/Benzene.Patterns.Choreography.Reactions.Analytics.csproj" />
+    <Project Path="Reactions/CacheWarmer/Benzene.Patterns.Choreography.Reactions.CacheWarmer.csproj" />
+    <Project Path="Reactions/TrialClock/Benzene.Patterns.Choreography.Reactions.TrialClock.csproj" />
+    <Project Path="Reactions/WelcomeEmail/Benzene.Patterns.Choreography.Reactions.WelcomeEmail.csproj" />
+  </Folder>
+</Solution>

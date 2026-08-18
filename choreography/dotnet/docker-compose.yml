@@ -1,0 +1,113 @@
+name: benzene-patterns-choreography
+
+# Event-driven choreography: one emitter, one fanout exchange, and N independent reactions. No
+# central conductor - the process is the sum of what each service decides to do.
+#
+#   docker compose up --build -d
+#
+#   # One event, three reactions, none of which the emitter has heard of.
+#   curl -X POST http://localhost:9380/tenants -H 'content-type: application/json' \
+#     -d '{"company":"acme","email":"admin@acme.com","plan":"standard"}'
+#   curl http://localhost:9381/emails ; curl http://localhost:9382/warmed ; curl http://localhost:9383/trials
+#
+#   # At-least-once: the SAME event published three times, handled once.
+#   curl -X POST http://localhost:9380/tenants -H 'content-type: application/json' \
+#     -d '{"company":"initech","email":"admin@initech.com","plan":"standard","emitTimes":3}'
+#
+#   # One reaction fails. The tenant still exists and the other two still ran - there is no rollback
+#   # in choreography, and there is not supposed to be one.
+#   curl -X POST http://localhost:9380/tenants -H 'content-type: application/json' \
+#     -d '{"company":"bounce-corp","email":"nobody@bounce.example","plan":"standard"}'
+#
+#   # A reaction that decides it has nothing to do: no trial on an enterprise plan.
+#   curl -X POST http://localhost:9380/tenants -H 'content-type: application/json' \
+#     -d '{"company":"umbrella","email":"admin@umbrella.com","plan":"enterprise"}'
+#
+#   # The claim, live: add a FOURTH reaction to a running estate. Nothing else restarts.
+#   docker compose --profile late up --build -d analytics
+#   curl http://localhost:9384/signups
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+
+  # ── The emitter: owns the tenant, announces that it exists, and stops ──────────────────────────
+  # Its routing table has ONE entry. It does not know how many services are listening, and there is
+  # nowhere in it that a new reaction would have to be registered.
+  emitter:
+    build:
+      context: .
+      dockerfile: Emitter/Dockerfile
+    image: benzene-patterns-choreography-emitter:compose
+    environment: &broker
+      - RABBIT_HOST=rabbitmq
+      - RABBIT_PORT=5672
+      - RABBIT_USER=guest
+      - RABBIT_PASSWORD=guest
+    ports:
+      - "9380:8080"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  # ── The reactions: each owns its queue, its binding, and its own idea of what to do ────────────
+  # They share nothing with each other. Their read endpoints exist only so a reader can see what
+  # each one did.
+  welcome-email:
+    build:
+      context: .
+      dockerfile: Reactions/WelcomeEmail/Dockerfile
+    image: benzene-patterns-choreography-welcome-email:compose
+    environment: *broker
+    ports:
+      - "9381:8080"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  cache-warmer:
+    build:
+      context: .
+      dockerfile: Reactions/CacheWarmer/Dockerfile
+    image: benzene-patterns-choreography-cache-warmer:compose
+    environment: *broker
+    ports:
+      - "9382:8080"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  trial-clock:
+    build:
+      context: .
+      dockerfile: Reactions/TrialClock/Dockerfile
+    image: benzene-patterns-choreography-trial-clock:compose
+    environment: *broker
+    ports:
+      - "9383:8080"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  # The fourth reaction, deliberately behind a profile so it is NOT running when the estate comes
+  # up. Start it against a live system and watch what does not happen: no rebuild, no restart, no
+  # edit to the emitter or to its three siblings.
+  analytics:
+    profiles: ["late"]
+    build:
+      context: .
+      dockerfile: Reactions/Analytics/Dockerfile
+    image: benzene-patterns-choreography-analytics:compose
+    environment: *broker
+    ports:
+      - "9384:8080"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
