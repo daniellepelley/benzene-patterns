@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Benzene.Patterns.EventSourcing.Ledger</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Benzene.AspNet.Core" />
+    <!-- The whole of Benzene's event-sourcing surface: IEventStore, EventEnvelope, StoredEvent,
+         EventStoreConcurrencyException, InMemoryEventStore. Deliberately tiny - everything else in
+         this example (the fold, snapshots, point-in-time, upcasting) is app code, which is the point
+         the pattern doc makes and this example demonstrates. -->
+    <PackageReference Include="Benzene.EventSourcing" />
+    <PackageReference Include="Benzene.Http" />
+    <PackageReference Include="Benzene.Microsoft.Dependencies" />
+  </ItemGroup>
+</Project>

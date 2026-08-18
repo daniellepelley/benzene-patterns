@@ -24,6 +24,7 @@ Each pattern is runnable locally via Docker Compose — no cloud account require
 | [The Two-Tier Microservice Architecture](two-tier-architecture/README.md) | ✅ | not started | not started | not started |
 | [Event-Driven Choreography](choreography/README.md) | ✅ | not started | not started | not started |
 | [CQRS and Read Models](cqrs-read-models/README.md) | ✅ | not started | not started | not started |
+| [Event Sourcing](event-sourcing/README.md) | ✅ | not started | not started | not started |
 
 ## Status of this repo
 

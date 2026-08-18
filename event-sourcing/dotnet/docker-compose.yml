@@ -1,0 +1,33 @@
+name: benzene-patterns-event-sourcing
+
+# An account ledger where the log IS the truth: no stored balance, no history table, no audit
+# system. State is a fold of events, computed on the way past and thrown away.
+#
+#   docker compose up --build -d
+#
+#   curl -X POST http://localhost:9580/accounts    -H 'content-type: application/json' \
+#     -d '{"accountId":"acc-1","holder":"Ada","currency":"GBP"}'
+#   curl -X POST http://localhost:9580/deposits    -H 'content-type: application/json' \
+#     -d '{"accountId":"acc-1","pence":10000,"reference":"salary"}'
+#   curl -X POST http://localhost:9580/withdrawals -H 'content-type: application/json' \
+#     -d '{"accountId":"acc-1","pence":2500,"reference":"rent"}'
+#
+#   curl http://localhost:9580/accounts/acc-1              # folded now
+#   curl 'http://localhost:9580/accounts/acc-1?asOf=2'     # folded as it stood at version 2
+#   curl http://localhost:9580/accounts/acc-1/history      # the events themselves - the audit trail
+#
+#   # Two writers who both read version 3. One wins; the other is REJECTED, not merged.
+#   curl -X POST http://localhost:9580/withdrawals -H 'content-type: application/json' \
+#     -d '{"accountId":"acc-1","pence":1000,"expectedVersion":3}'
+#
+#   # A snapshot changes the COST and not the ANSWER - watch eventsRead, then clear and compare.
+#   curl -X POST http://localhost:9580/snapshots       -H 'content-type: application/json' -d '{"accountId":"acc-1"}'
+#   curl -X POST http://localhost:9580/snapshots/clear -H 'content-type: application/json' -d '{}'
+services:
+  ledger:
+    build:
+      context: .
+      dockerfile: Ledger/Dockerfile
+    image: benzene-patterns-event-sourcing-ledger:compose
+    ports:
+      - "9580:8080"

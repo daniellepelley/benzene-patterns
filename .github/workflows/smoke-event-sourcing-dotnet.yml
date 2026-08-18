@@ -1,0 +1,181 @@
+name: Smoke - Event Sourcing (.NET)
+
+# Event sourcing's claims are testable in a way most patterns' are not, because they are claims about
+# a pure function. Each one is asserted here rather than described:
+#
+#   nothing stores state                       grep - no balance is ever persisted
+#   the log is never rewritten                 live - a legacy event is still there, verbatim
+#   old events, new code                       live - a v1 deposit folds into today's balance
+#   a concurrent write is REJECTED, not lost   live - two writers, one 409, money not created
+#   a refusal appends nothing                  live - the log is unchanged after insufficient-funds
+#   point-in-time is free                      live - as-of every version
+#   a snapshot changes cost, not answer        live - same balance, fewer events read
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'event-sourcing/dotnet/**'
+      - '.github/workflows/smoke-event-sourcing-dotnet.yml'
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'event-sourcing/dotnet/**'
+      - '.github/workflows/smoke-event-sourcing-dotnet.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  COMPOSE_FILE: event-sourcing/dotnet/docker-compose.yml
+  B: http://localhost:9580
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Nothing writes state - only events
+        # The one structural guarantee. A stored balance is a second source of truth that can drift
+        # from the events that produced it, and the drift is silent.
+        run: |
+          set -euo pipefail
+          cd event-sourcing/dotnet
+          # The only writes in the service are AppendAsync calls and the snapshot CACHE.
+          writes=$(git grep -n 'AppendAsync' -- 'Ledger/*' | wc -l)
+          [ "$writes" -gt 0 ] || { echo "::error::no appends found - did the ledger move?"; exit 1; }
+          if git grep -nE '\.Save\(|Upsert|Update' -- 'Ledger/*' | grep -v 'SnapshotStore\|_snapshots.Save'; then
+            echo "::error::something other than the snapshot cache is being written"
+            exit 1
+          fi
+          echo "the log is the only thing written to"
+
+      - name: Compose up (build)
+        run: |
+          for attempt in 1 2 3; do
+            if docker compose -f "$COMPOSE_FILE" up -d --build; then exit 0; fi
+            echo "::warning::compose build failed (attempt $attempt/3); retrying in 30s"
+            docker compose -f "$COMPOSE_FILE" down -v || true
+            sleep 30
+          done
+          echo "::error::compose build failed after 3 attempts"
+          exit 1
+
+      - name: Wait for the ledger
+        run: |
+          ok=0
+          for i in $(seq 1 60); do
+            status=$(curl -s -o /dev/null -w '%{http_code}' "$B/accounts/none" || true)
+            if [ "$status" = "404" ]; then ok=1; break; fi
+            sleep 2
+          done
+          [ "$ok" = "1" ] || { echo "::error::the ledger never came up"; exit 1; }
+
+      - name: Open, deposit, withdraw
+        run: |
+          set -euo pipefail
+          curl -fsS -X POST "$B/accounts" -H 'content-type: application/json' \
+            -d '{"accountId":"acc-1","holder":"Ada","currency":"GBP"}' -o o.json
+          jq -e '.version == 1' o.json >/dev/null || { echo "::error::opening did not start the stream"; exit 1; }
+          # Opening twice is a CONFLICT, not a second opening event. The uniqueness constraint is the
+          # append itself, so there is no check-then-write race to lose.
+          code=$(curl -s -o dup.json -w '%{http_code}' -X POST "$B/accounts" \
+            -H 'content-type: application/json' -d '{"accountId":"acc-1","holder":"Ada"}')
+          [ "$code" = "409" ] || { echo "::error::a duplicate open returned $code, not 409"; exit 1; }
+          curl -fsS -X POST "$B/deposits" -H 'content-type: application/json' \
+            -d '{"accountId":"acc-1","pence":10000,"reference":"salary"}' -o d.json
+          curl -fsS -X POST "$B/withdrawals" -H 'content-type: application/json' \
+            -d '{"accountId":"acc-1","pence":2500,"reference":"rent"}' -o w.json
+          jq -e '.balancePence == 7500 and .version == 3' w.json >/dev/null \
+            || { echo "::error::the fold did not produce 7500p at v3"; cat w.json; exit 1; }
+          echo "7500p at version 3, folded from three events"
+
+      - name: A refusal is a result, and appends nothing
+        run: |
+          set -euo pipefail
+          before=$(curl -fsS "$B/accounts/acc-1/history" | jq -r '.count')
+          code=$(curl -s -o if.json -w '%{http_code}' -X POST "$B/withdrawals" \
+            -H 'content-type: application/json' -d '{"accountId":"acc-1","pence":999999}')
+          cat if.json
+          [ "$code" = "422" ] || { echo "::error::insufficient funds returned $code"; exit 1; }
+          grep -q 'insufficient-funds' if.json || { echo "::error::the reason was not carried"; exit 1; }
+          after=$(curl -fsS "$B/accounts/acc-1/history" | jq -r '.count')
+          [ "$before" = "$after" ] \
+            || { echo "::error::a refused withdrawal appended to the log ($before -> $after)"; exit 1; }
+          echo "refused, explained, and nothing written"
+
+      - name: Two writers, one winner - the loser is rejected, not merged
+        # The assertion that matters: money is not created. A last-write-wins store would apply both
+        # withdrawals against the same balance and lose one of them silently.
+        run: |
+          set -euo pipefail
+          a=$(curl -s -o w1.json -w '%{http_code}' -X POST "$B/withdrawals" \
+            -H 'content-type: application/json' -d '{"accountId":"acc-1","pence":1000,"expectedVersion":3}')
+          b=$(curl -s -o w2.json -w '%{http_code}' -X POST "$B/withdrawals" \
+            -H 'content-type: application/json' -d '{"accountId":"acc-1","pence":1000,"expectedVersion":3}')
+          cat w1.json; echo " -> $a"
+          cat w2.json; echo " -> $b"
+          [ "$a" = "200" ] || { echo "::error::the first writer should have won"; exit 1; }
+          [ "$b" = "409" ] || { echo "::error::the stale writer returned $b, not 409"; exit 1; }
+          grep -q 'was not applied' w2.json || { echo "::error::the loser was not told its write was dropped"; exit 1; }
+          curl -fsS "$B/accounts/acc-1" -o s.json
+          jq -e '.balancePence == 6500' s.json >/dev/null \
+            || { echo "::error::exactly one withdrawal should have applied"; cat s.json; exit 1; }
+          echo "one applied, one rejected, balance 6500p"
+
+      - name: Old events, new code - and the log is not rewritten
+        run: |
+          set -euo pipefail
+          curl -fsS -X POST "$B/legacy-deposits" -H 'content-type: application/json' \
+            -d '{"accountId":"acc-1","pence":5000,"reference":"1998-cheque"}' -o l.json
+          curl -fsS "$B/accounts/acc-1" -o s.json
+          jq -e '.balancePence == 11500 and .currency == "GBP"' s.json >/dev/null \
+            || { echo "::error::the legacy event did not upcast into the balance"; cat s.json; exit 1; }
+          # ...and the audit trail still shows what was ACTUALLY written, in its original shape.
+          curl -fsS "$B/accounts/acc-1/history" -o h.json
+          jq -e '[.events[] | select(.eventType == "money:deposited:v1")] | length == 1' h.json >/dev/null \
+            || { echo "::error::the historical event was rewritten - a log must never be"; cat h.json; exit 1; }
+          jq -e '[.events[] | select(.eventType == "money:deposited:v1") | select(.payload | contains("currency") | not)] | length == 1' h.json >/dev/null \
+            || { echo "::error::the stored payload gained a field it never had"; exit 1; }
+          echo "upcast on read; stored verbatim"
+
+      - name: Point-in-time comes free with the fold
+        run: |
+          set -euo pipefail
+          for v in 1 2 3; do curl -fsS "$B/accounts/acc-1?asOf=$v" -o "v$v.json"; done
+          jq -e '.balancePence == 0'     v1.json >/dev/null || { echo "::error::as-of v1"; exit 1; }
+          jq -e '.balancePence == 10000' v2.json >/dev/null || { echo "::error::as-of v2"; exit 1; }
+          jq -e '.balancePence == 7500'  v3.json >/dev/null || { echo "::error::as-of v3"; exit 1; }
+          echo "0p, 10000p, 7500p - the account as it stood at each version"
+
+      - name: A snapshot changes the cost, never the answer
+        # If clearing every snapshot changed a single balance, the snapshots would be a second source
+        # of truth wearing a performance hat.
+        run: |
+          set -euo pipefail
+          curl -fsS -X POST "$B/snapshots" -H 'content-type: application/json' \
+            -d '{"accountId":"acc-1"}' -o snap.json
+          curl -fsS -X POST "$B/deposits" -H 'content-type: application/json' \
+            -d '{"accountId":"acc-1","pence":100}' -o dep.json
+          curl -fsS "$B/accounts/acc-1" -o with.json
+          jq -e '.fromSnapshot == true' with.json >/dev/null \
+            || { echo "::error::the snapshot was not used"; cat with.json; exit 1; }
+          curl -fsS -X POST "$B/snapshots/clear" -H 'content-type: application/json' -d '{}' -o cl.json
+          curl -fsS "$B/accounts/acc-1" -o without.json
+          cat with.json; cat without.json
+          [ "$(jq -r '.balancePence' with.json)" = "$(jq -r '.balancePence' without.json)" ] \
+            || { echo "::error::the snapshot changed the ANSWER - it is not a cache"; exit 1; }
+          [ "$(jq -r '.version' with.json)" = "$(jq -r '.version' without.json)" ] \
+            || { echo "::error::the snapshot changed the version"; exit 1; }
+          [ "$(jq -r '.eventsRead' with.json)" -lt "$(jq -r '.eventsRead' without.json)" ] \
+            || { echo "::error::the snapshot saved nothing - it is being ignored"; exit 1; }
+          echo "same balance, fewer events read"
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose -f "$COMPOSE_FILE" logs || true
+
+      - name: Compose down
+        if: always()
+        run: docker compose -f "$COMPOSE_FILE" down -v || true

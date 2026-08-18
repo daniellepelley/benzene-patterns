@@ -1,0 +1,5 @@
+<Solution>
+  <Folder Name="/Ledger/">
+    <Project Path="Ledger/Benzene.Patterns.EventSourcing.Ledger.csproj" />
+  </Folder>
+</Solution>
