@@ -1,0 +1,204 @@
+name: Smoke - Real-Time Stream Processing (.NET)
+
+# The stream model's properties are exactly the ones a fan-out throws away, so each is asserted
+# against a real Benzene stream pipeline rather than described:
+#
+#   one invocation per BATCH, not per record     live - 6 records, 1 pipeline run
+#   ordered, windowed, rolled into OHLC bars     live - open/high/low/close/volume per symbol-minute
+#   the checkpoint only ever advances            live - it stops short on failure, never rewinds
+#   resume from the failure, not from zero       live - the second drain reads only what is left
+#   rolling state crosses invocations            live - a bar spans two batches and stays correct
+#   at-least-once means the fold must converge   live - a replayed record counted once...
+#   ...and the obvious fold does NOT             live - ...and twice, with `+=`, silently
+#   PartitionBy costs partial progress           live - checkpoint unchanged, whole batch replays
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'streaming-processing/dotnet/**'
+      - '.github/workflows/smoke-streaming-dotnet.yml'
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'streaming-processing/dotnet/**'
+      - '.github/workflows/smoke-streaming-dotnet.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  COMPOSE_FILE: streaming-processing/dotnet/docker-compose.yml
+  B: http://localhost:9680
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: The pipeline is the real one
+        # The point of this example is that Window, PartitionBy, StreamContext and IStreamCheckpointer
+        # are Benzene's own and transport-neutral. If a future edit reimplemented them locally, the
+        # example would still pass its behavioural tests while proving nothing.
+        run: |
+          set -euo pipefail
+          cd streaming-processing/dotnet
+          for symbol in 'StreamContext<Tick>' '.Window(' '.PartitionBy(' 'IStreamCheckpointer<Tick>'; do
+            git grep -qF "$symbol" -- 'TickPipeline/*' \
+              || { echo "::error::$symbol is no longer used - the example stopped exercising the binding"; exit 1; }
+          done
+          if git grep -nE 'class (Window|PartitionBy)Operator' -- 'TickPipeline/*'; then
+            echo "::error::the stream operators were reimplemented locally"
+            exit 1
+          fi
+          echo "the stream pipeline, its operators and its checkpointer are Benzene's"
+
+      - name: Compose up (build)
+        run: |
+          for attempt in 1 2 3; do
+            if docker compose -f "$COMPOSE_FILE" up -d --build; then exit 0; fi
+            echo "::warning::compose build failed (attempt $attempt/3); retrying in 30s"
+            docker compose -f "$COMPOSE_FILE" down -v || true
+            sleep 30
+          done
+          echo "::error::compose build failed after 3 attempts"
+          exit 1
+
+      - name: Wait for the pipeline
+        run: |
+          ok=0
+          for i in $(seq 1 60); do
+            status=$(curl -s -o /dev/null -w '%{http_code}' "$B/shard" || true)
+            if [ "$status" = "200" ]; then ok=1; break; fi
+            sleep 2
+          done
+          [ "$ok" = "1" ] || { echo "::error::the pipeline never came up"; exit 1; }
+
+      - name: One batch, one invocation, ordered OHLC bars
+        run: |
+          set -euo pipefail
+          curl -fsS -X POST "$B/ticks" -H 'content-type: application/json' -d '{"ticks":[
+            {"symbol":"AAPL","price":100,"size":10,"minute":"09:30"},
+            {"symbol":"MSFT","price":200,"size":5,"minute":"09:30"},
+            {"symbol":"AAPL","price":102,"size":20,"minute":"09:30"},
+            {"symbol":"MSFT","price":198,"size":7,"minute":"09:30"},
+            {"symbol":"AAPL","price":101,"size":30,"minute":"09:30"},
+            {"symbol":"AAPL","price":103,"size":40,"minute":"09:31"}]}' -o p.json
+          jq -e '.published == 6' p.json >/dev/null
+          curl -fsS -X POST "$B/drain" -H 'content-type: application/json' -d '{"windowSize":3}' -o d.json
+          cat d.json
+          jq -e '.recordsRead == 6 and .recordsApplied == 6 and .checkpointAfter == 6 and .failed == false' d.json >/dev/null \
+            || { echo "::error::the batch did not process cleanly"; exit 1; }
+          curl -fsS "$B/bars" -o b.json
+          cat b.json
+          # Open is the FIRST tick and close the LAST, which is only true if order survived.
+          jq -e '[.bars[] | select(.symbol == "AAPL" and .minute == "09:30")]
+                 | .[0] | .open == 100 and .high == 102 and .low == 100 and .close == 101 and .volume == 60' b.json >/dev/null \
+            || { echo "::error::the AAPL 09:30 bar is wrong - order or aggregation broke"; exit 1; }
+          jq -e '[.bars[] | select(.symbol == "MSFT" and .minute == "09:30")]
+                 | .[0] | .open == 200 and .low == 198 and .close == 198 and .volume == 12' b.json >/dev/null \
+            || { echo "::error::the MSFT 09:30 bar is wrong"; exit 1; }
+          echo "two symbols, three bars, folded in order from one invocation"
+
+      - name: Resume from the failure, not from zero - and count the replay once
+        # The whole reliability story in one scenario. Sequence 11 is the second record of the second
+        # window, so window one is checkpointed, record 10 IS applied and then replayed, and the bar
+        # still has to come out right.
+        run: |
+          set -euo pipefail
+          curl -fsS -X POST "$B/ticks" -H 'content-type: application/json' -d '{"ticks":[
+            {"symbol":"NVDA","price":10,"size":1,"minute":"09:32"},
+            {"symbol":"NVDA","price":11,"size":2,"minute":"09:32"},
+            {"symbol":"NVDA","price":12,"size":4,"minute":"09:32"},
+            {"symbol":"NVDA","price":13,"size":8,"minute":"09:32"},
+            {"symbol":"NVDA","price":14,"size":16,"minute":"09:32"},
+            {"symbol":"NVDA","price":15,"size":32,"minute":"09:32"}]}' -o p2.json
+          curl -fsS -X POST "$B/poison" -H 'content-type: application/json' \
+            -d '{"sequenceNumber":11,"times":1}' -o poison.json
+          curl -fsS -X POST "$B/drain" -H 'content-type: application/json' -d '{"windowSize":3}' -o d1.json
+          cat d1.json
+          jq -e '.failed == true and .checkpointBefore == 6 and .checkpointAfter == 9 and .recordsApplied == 4' d1.json >/dev/null \
+            || { echo "::error::partial progress was not checkpointed at the window boundary"; exit 1; }
+          curl -fsS -X POST "$B/drain" -H 'content-type: application/json' -d '{"windowSize":3}' -o d2.json
+          cat d2.json
+          # Three records left, not six: the checkpoint meant the first window was never re-read.
+          jq -e '.recordsRead == 3 and .failed == false and .checkpointAfter == 12' d2.json >/dev/null \
+            || { echo "::error::the batch did not resume from the checkpoint"; exit 1; }
+          curl -fsS "$B/bars" -o b2.json
+          jq -e '[.bars[] | select(.symbol == "NVDA")] | .[0]
+                 | .volume == 63 and (.sequences | length == 6) and (.sequences | unique | length == 6)' b2.json >/dev/null \
+            || { echo "::error::the replayed record was counted twice"; jq '.bars[] | select(.symbol=="NVDA")' b2.json; exit 1; }
+          echo "record 10 replayed, counted once, volume 63"
+
+      - name: The obvious fold is wrong, and nothing reports it
+        # Same shard, same failure, same recovery - with `Volume += size` instead of the idempotent
+        # upsert. It produces a bar. The bar is wrong. That is the failure mode worth showing.
+        run: |
+          set -euo pipefail
+          curl -fsS -X POST "$B/ticks" -H 'content-type: application/json' -d '{"ticks":[
+            {"symbol":"TSLA","price":10,"size":1,"minute":"09:33"},
+            {"symbol":"TSLA","price":11,"size":2,"minute":"09:33"},
+            {"symbol":"TSLA","price":12,"size":4,"minute":"09:33"},
+            {"symbol":"TSLA","price":13,"size":8,"minute":"09:33"},
+            {"symbol":"TSLA","price":14,"size":16,"minute":"09:33"},
+            {"symbol":"TSLA","price":15,"size":32,"minute":"09:33"}]}' -o p3.json
+          curl -fsS -X POST "$B/poison" -H 'content-type: application/json' \
+            -d '{"sequenceNumber":17,"times":1}' -o poison2.json
+          curl -fsS -X POST "$B/drain" -H 'content-type: application/json' -d '{"windowSize":3,"naive":true}' -o n1.json
+          curl -fsS -X POST "$B/drain" -H 'content-type: application/json' -d '{"windowSize":3,"naive":true}' -o n2.json
+          curl -fsS "$B/bars" -o b3.json
+          jq '.bars[] | select(.symbol == "TSLA")' b3.json
+          # 1+2+4+8+16+32 = 63. The naive fold double-counts the replayed record 16, giving 71.
+          jq -e '[.bars[] | select(.symbol == "TSLA")] | .[0] | .volume == 71' b3.json >/dev/null \
+            || { echo "::error::the naive fold no longer reproduces the bug - the demo proves nothing"; exit 1; }
+          echo "naive volume 71 where the truth is 63 - eight units of volume that never traded"
+
+      - name: PartitionBy groups the batch, and costs partial progress
+        # Not a criticism of the operator - it is the right tool when a computation needs all of a
+        # key's records together. But grouping destroys shard order, so there is no mid-batch
+        # checkpoint, and a failure replays everything. Worth knowing before choosing it.
+        run: |
+          set -euo pipefail
+          curl -fsS -X POST "$B/ticks" -H 'content-type: application/json' -d '{"ticks":[
+            {"symbol":"AMZN","price":10,"size":1,"minute":"09:34"},
+            {"symbol":"GOOG","price":20,"size":2,"minute":"09:34"},
+            {"symbol":"AMZN","price":12,"size":4,"minute":"09:34"},
+            {"symbol":"GOOG","price":22,"size":8,"minute":"09:34"},
+            {"symbol":"AMZN","price":14,"size":16,"minute":"09:34"},
+            {"symbol":"GOOG","price":24,"size":32,"minute":"09:34"}]}' -o p4.json
+          curl -fsS -X POST "$B/poison" -H 'content-type: application/json' \
+            -d '{"sequenceNumber":23,"times":1}' -o poison3.json
+          curl -fsS -X POST "$B/drain" -H 'content-type: application/json' -d '{"mode":"partition"}' -o q1.json
+          cat q1.json
+          jq -e '.failed == true and (.checkpointAfter == .checkpointBefore)' q1.json >/dev/null \
+            || { echo "::error::partition mode reported partial progress it cannot have"; exit 1; }
+          curl -fsS -X POST "$B/drain" -H 'content-type: application/json' -d '{"mode":"partition"}' -o q2.json
+          cat q2.json
+          jq -e '.recordsRead == 6 and .failed == false' q2.json >/dev/null \
+            || { echo "::error::the whole batch should have replayed"; exit 1; }
+          curl -fsS "$B/bars" -o b4.json
+          # And the bars are still right, because the fold converges - which is the price of admission
+          # for choosing this mode at all.
+          jq -e '[.bars[] | select(.symbol == "AMZN" and .minute == "09:34")] | .[0] | .volume == 21' b4.json >/dev/null \
+            || { echo "::error::AMZN 09:34 is wrong"; jq '.bars[] | select(.minute=="09:34")' b4.json; exit 1; }
+          jq -e '[.bars[] | select(.symbol == "GOOG" and .minute == "09:34")] | .[0] | .volume == 42' b4.json >/dev/null \
+            || { echo "::error::GOOG 09:34 is wrong"; exit 1; }
+          echo "whole batch replayed, per-symbol grouping preserved, bars correct"
+
+      - name: The checkpoint never went backwards
+        run: |
+          set -euo pipefail
+          curl -fsS "$B/shard" -o s.json
+          cat s.json
+          jq -e '.checkpoint == .lastSequence and .lag == 0' s.json >/dev/null \
+            || { echo "::error::the shard did not drain fully"; exit 1; }
+          echo "caught up: checkpoint == last sequence"
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose -f "$COMPOSE_FILE" logs || true
+
+      - name: Compose down
+        if: always()
+        run: docker compose -f "$COMPOSE_FILE" down -v || true

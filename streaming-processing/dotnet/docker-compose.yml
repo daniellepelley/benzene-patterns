@@ -1,0 +1,31 @@
+name: benzene-patterns-streaming
+
+# A market-data tick pipeline over a real Benzene stream pipeline: one invocation per BATCH (fan-in),
+# ordered, windowed, checkpointed, and rolled into one-minute OHLC bars.
+#
+#   docker compose up --build -d
+#   B=http://localhost:9680
+#
+#   curl -X POST $B/ticks -H 'content-type: application/json' -d '{"ticks":[
+#     {"symbol":"AAPL","price":100,"size":10,"minute":"09:30"},
+#     {"symbol":"MSFT","price":200,"size":5,"minute":"09:30"},
+#     {"symbol":"AAPL","price":102,"size":20,"minute":"09:30"}]}'
+#
+#   curl -X POST $B/drain -H 'content-type: application/json' -d '{"windowSize":3}'
+#   curl $B/bars ; curl $B/shard
+#
+#   # Rig a record to fail, then watch the batch resume from the failure and not from zero.
+#   curl -X POST $B/poison -H 'content-type: application/json' -d '{"sequenceNumber":5,"times":1}'
+#   curl -X POST $B/drain  -H 'content-type: application/json' -d '{"windowSize":3}'   # checkpoint stops short
+#   curl -X POST $B/drain  -H 'content-type: application/json' -d '{"windowSize":3}'   # replays, converges
+#
+#   # The same run with the obvious, wrong fold. Volume comes out too high, and nothing reports it.
+#   curl -X POST $B/drain -H 'content-type: application/json' -d '{"windowSize":3,"naive":true}'
+services:
+  tick-pipeline:
+    build:
+      context: .
+      dockerfile: TickPipeline/Dockerfile
+    image: benzene-patterns-streaming-tick-pipeline:compose
+    ports:
+      - "9680:8080"

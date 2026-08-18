@@ -25,10 +25,19 @@ Each pattern is runnable locally via Docker Compose — no cloud account require
 | [Event-Driven Choreography](choreography/README.md) | ✅ | not started | not started | not started |
 | [CQRS and Read Models](cqrs-read-models/README.md) | ✅ | not started | not started | not started |
 | [Event Sourcing](event-sourcing/README.md) | ✅ | not started | not started | not started |
+| [Real-Time Stream Processing](streaming-processing/README.md) | ✅ | not started | not started | not started |
 
 ## Status of this repo
 
-Early and incremental. The [real-time risk platform](real-time-risk/README.md) is being built one
+Every pattern in `docs/patterns/` that describes a distinct runnable shape now has a .NET
+implementation, each one asserting its claims rather than describing them — CI greps enforce the
+structural rules (a module that references another module, a core service that grew an outbound
+route, an emitter that names a consumer) and smoke tests assert the behavioural ones against real
+service state. The four remaining pattern docs — `composing-services`, `core-services`,
+`orchestrators` and `service-communication` — are the layers of the two-tier pattern rather than
+separate systems, and are covered by [that example](two-tier-architecture/README.md).
+
+The [real-time risk platform](real-time-risk/README.md) is being built one
 service at a time, in .NET first, per its own README's build order — see that document for exactly
 what's running today versus what's planned. Four of its six services run today (Trade Ledger, Risk
 Read Models, Pricing Service and Risk Coordinator), covering event sourcing, CQRS, gRPC streaming and

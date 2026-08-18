@@ -1,0 +1,5 @@
+<Solution>
+  <Folder Name="/TickPipeline/">
+    <Project Path="TickPipeline/Benzene.Patterns.Streaming.TickPipeline.csproj" />
+  </Folder>
+</Solution>

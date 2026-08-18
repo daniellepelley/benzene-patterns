@@ -1,0 +1,26 @@
+<Project>
+
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <!-- Why this file exists: see two-tier-architecture/dotnet/Directory.Packages.props. -->
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageVersion Include="Benzene.Abstractions" Version="[0.0.2-alpha.6]" />
+    <PackageVersion Include="Benzene.Abstractions.MessageHandlers" Version="[0.0.2-alpha.6]" />
+    <PackageVersion Include="Benzene.Abstractions.Messages" Version="[0.0.2-alpha.6]" />
+    <PackageVersion Include="Benzene.Abstractions.Middleware" Version="[0.0.2-alpha.6]" />
+    <PackageVersion Include="Benzene.Abstrations.Pipelines" Version="[0.0.2-alpha.6]" />
+    <PackageVersion Include="Benzene.AspNet.Core" Version="[0.0.2-alpha.6]" />
+    <PackageVersion Include="Benzene.CodeGen.SourceGenerators" Version="[0.0.2-alpha.6]" />
+    <PackageVersion Include="Benzene.Core" Version="[0.0.2-alpha.6]" />
+    <PackageVersion Include="Benzene.Core.MessageHandlers" Version="[0.0.2-alpha.6]" />
+    <PackageVersion Include="Benzene.Core.Messages" Version="[0.0.2-alpha.6]" />
+    <PackageVersion Include="Benzene.Core.Middleware" Version="[0.0.2-alpha.6]" />
+    <PackageVersion Include="Benzene.Http" Version="[0.0.2-alpha.6]" />
+    <PackageVersion Include="Benzene.Microsoft.Dependencies" Version="[0.0.2-alpha.6]" />
+    <PackageVersion Include="Benzene.Results" Version="[0.0.2-alpha.6]" />
+  </ItemGroup>
+
+</Project>
