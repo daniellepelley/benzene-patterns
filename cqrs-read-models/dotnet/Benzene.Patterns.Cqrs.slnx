@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/Contracts/">
+    <Project Path="Contracts/Benzene.Patterns.Cqrs.Contracts.csproj" />
+  </Folder>
+  <Folder Name="/ReadModel/">
+    <Project Path="ReadModel/Benzene.Patterns.Cqrs.ReadModel.csproj" />
+  </Folder>
+  <Folder Name="/Write/">
+    <Project Path="Write/TenantService/Benzene.Patterns.Cqrs.Write.TenantService.csproj" />
+    <Project Path="Write/UserService/Benzene.Patterns.Cqrs.Write.UserService.csproj" />
+  </Folder>
+</Solution>

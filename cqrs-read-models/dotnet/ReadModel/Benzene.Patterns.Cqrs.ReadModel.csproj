@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Benzene.Patterns.Cqrs.ReadModel</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Both transports in one process: UseAspNet mounts Kestrel as a worker beside UseRabbitMq,
+         so the projection side and the query side share one startup and one store. -->
+    <PackageReference Include="Benzene.AspNet.Core" />
+    <PackageReference Include="Benzene.Core.MessageHandlers" />
+    <PackageReference Include="Benzene.Diagnostics" />
+    <PackageReference Include="Benzene.HostedService" />
+    <PackageReference Include="Benzene.Http" />
+    <PackageReference Include="Benzene.Idempotency" />
+    <PackageReference Include="Benzene.Microsoft.Dependencies" />
+    <PackageReference Include="Benzene.RabbitMq" />
+    <PackageReference Include="Benzene.SelfHost" />
+    <PackageReference Include="RabbitMQ.Client" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Contracts\Benzene.Patterns.Cqrs.Contracts.csproj" />
+  </ItemGroup>
+</Project>

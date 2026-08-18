@@ -1,0 +1,85 @@
+name: benzene-patterns-cqrs
+
+# CQRS: two share-nothing write services that cannot answer "a tenant and its users", and one read
+# model that can - built by projecting their events into a shape nobody on the write side may hold.
+#
+#   docker compose up --build -d
+#
+#   # Write. Two aggregates, two services, neither aware of the other.
+#   TID=$(curl -s -X POST http://localhost:9480/tenants -H 'content-type: application/json' \
+#     -d '{"company":"acme"}' | jq -r .tenantId)
+#   curl -X POST http://localhost:9481/users -H 'content-type: application/json' \
+#     -d "{\"tenantId\":\"$TID\",\"email\":\"a@acme.com\"}"
+#
+#   # The authority answers immediately; the read model catches up.
+#   curl http://localhost:9480/tenants/$TID     # write side - current, single aggregate
+#   curl http://localhost:9482/tenants/$TID     # read model - the join, one indexed read
+#
+#   # Rebuild the whole view by replaying the write side's events. Then do it BACKWARDS: an
+#   # order-insensitive fold produces a byte-identical view either way.
+#   curl -X POST http://localhost:9482/rebuild -H 'content-type: application/json' -d '{}'
+#   curl -X POST http://localhost:9482/rebuild -H 'content-type: application/json' -d '{"reverse":true}'
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+
+  # ── The write model: one aggregate each, share-nothing, no route to anything ───────────────────
+  tenant:
+    build:
+      context: .
+      dockerfile: Write/TenantService/Dockerfile
+    image: benzene-patterns-cqrs-tenant:compose
+    environment: &broker
+      - RABBIT_HOST=rabbitmq
+      - RABBIT_PORT=5672
+      - RABBIT_USER=guest
+      - RABBIT_PASSWORD=guest
+    ports:
+      - "9480:8080"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  user:
+    build:
+      context: .
+      dockerfile: Write/UserService/Dockerfile
+    image: benzene-patterns-cqrs-user:compose
+    environment: *broker
+    ports:
+      - "9481:8080"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  # ── The read model: projects both event streams into one denormalized view ─────────────────────
+  # PROJECTION_DELAY_MS is a demo affordance. Eventual consistency is real and invisible on a
+  # laptop - the broker catches up faster than you can type the next curl - so the delay makes the
+  # lag window observable instead of asking a reader to take it on trust. Set it to 0 for normal use.
+  read-model:
+    build:
+      context: .
+      dockerfile: ReadModel/Dockerfile
+    image: benzene-patterns-cqrs-read-model:compose
+    environment:
+      - RABBIT_HOST=rabbitmq
+      - RABBIT_PORT=5672
+      - RABBIT_USER=guest
+      - RABBIT_PASSWORD=guest
+      - PORT=8080
+      - PROJECTION_DELAY_MS=${PROJECTION_DELAY_MS:-0}
+      - TENANT_EVENTS_URL=http://tenant:8080/events
+      - USER_EVENTS_URL=http://user:8080/events
+    ports:
+      - "9482:8080"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy

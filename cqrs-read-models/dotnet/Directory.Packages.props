@@ -1,0 +1,45 @@
+<Project>
+
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <!-- Why this file exists: see two-tier-architecture/dotnet/Directory.Packages.props. Short
+         version - every Benzene.* package here is an alpha, nuget.org still hosts older releases of
+         the same ids under a legacy four-part scheme whose numeric core sorts ABOVE these, and a
+         bare Version= is a MINIMUM to NuGet rather than a pin. Transitive pinning does the job once,
+         centrally. -->
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageVersion Include="Benzene.Abstractions" Version="[0.0.2-alpha.6]" />
+    <PackageVersion Include="Benzene.Abstractions.MessageHandlers" Version="[0.0.2-alpha.6]" />
+    <PackageVersion Include="Benzene.Abstractions.Messages" Version="[0.0.2-alpha.6]" />
+    <PackageVersion Include="Benzene.Abstractions.Middleware" Version="[0.0.2-alpha.6]" />
+    <PackageVersion Include="Benzene.Abstrations.Pipelines" Version="[0.0.2-alpha.6]" />
+    <PackageVersion Include="Benzene.AspNet.Core" Version="[0.0.2-alpha.6]" />
+    <PackageVersion Include="Benzene.Clients" Version="[0.0.2-alpha.6]" />
+    <PackageVersion Include="Benzene.CodeGen.SourceGenerators" Version="[0.0.2-alpha.6]" />
+    <PackageVersion Include="Benzene.Core" Version="[0.0.2-alpha.6]" />
+    <PackageVersion Include="Benzene.Core.MessageHandlers" Version="[0.0.2-alpha.6]" />
+    <PackageVersion Include="Benzene.Core.Messages" Version="[0.0.2-alpha.6]" />
+    <PackageVersion Include="Benzene.Core.Middleware" Version="[0.0.2-alpha.6]" />
+    <PackageVersion Include="Benzene.Diagnostics" Version="[0.0.2-alpha.6]" />
+    <PackageVersion Include="Benzene.HealthChecks.Core" Version="[0.0.2-alpha.6]" />
+    <PackageVersion Include="Benzene.HostedService" Version="[0.0.2-alpha.6]" />
+    <PackageVersion Include="Benzene.Http" Version="[0.0.2-alpha.6]" />
+    <PackageVersion Include="Benzene.Idempotency" Version="[0.0.2-alpha.6]" />
+    <PackageVersion Include="Benzene.Microsoft.Dependencies" Version="[0.0.2-alpha.6]" />
+    <PackageVersion Include="Benzene.RabbitMq" Version="[0.0.2-alpha.6]" />
+    <PackageVersion Include="Benzene.Results" Version="[0.0.2-alpha.6]" />
+    <PackageVersion Include="Benzene.SelfHost" Version="[0.0.2-alpha.6]" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The one non-Benzene pin. Benzene.RabbitMq 0.0.2-alpha.6 depends on RabbitMQ.Client 7.0.0,
+         and this example touches the client API directly (IChannel, ConnectionFactory) to declare
+         its own exchange, queue and binding - see the note in each service about why the topology
+         is declared by the service that owns it rather than centrally. -->
+    <PackageVersion Include="RabbitMQ.Client" Version="[7.0.0]" />
+  </ItemGroup>
+
+</Project>

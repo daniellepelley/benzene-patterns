@@ -1,0 +1,197 @@
+name: Smoke - CQRS and Read Models (.NET)
+
+# A read model's properties are all claims about things NOT happening - the write side doesn't know
+# about it, duplicates don't accumulate, order doesn't matter, the store isn't authoritative. Each
+# one is a grep or a live assertion:
+#
+#   the write side has no read model, and no route to one     grep
+#   the read model calls nobody                               grep
+#   the write side cannot answer the cross-aggregate query    live (404 from the authority)
+#   the read model can, in one read                           live
+#   it LAGS, and the authority does not                       live, with the lag made observable
+#   duplicates fold, they do not accumulate                   live (4 deliveries, 1 user)
+#   the view is derived: delete it and replay                 live
+#   the fold is order-insensitive                             live (replay BACKWARDS, byte-identical)
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'cqrs-read-models/dotnet/**'
+      - '.github/workflows/smoke-cqrs-dotnet.yml'
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'cqrs-read-models/dotnet/**'
+      - '.github/workflows/smoke-cqrs-dotnet.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  COMPOSE_FILE: cqrs-read-models/dotnet/docker-compose.yml
+  PROJECTION_DELAY_MS: "3000"
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: The write side does not know the read model exists
+        # If it did, "add a new view without touching any core service" would be false, and the next
+        # view would need a write-side deployment.
+        run: |
+          set -euo pipefail
+          cd cqrs-read-models/dotnet
+          if git grep -niE 'readmodel|read-model|tenantusersview' -- 'Write/*'; then
+            echo "::error::a write service references the read model"
+            exit 1
+          fi
+          # And the two write services do not know each other either - reference by id, no calls.
+          if git grep -n 'Write.UserService' -- 'Write/TenantService' ; then
+            echo "::error::the Tenant service references the User service"; exit 1
+          fi
+          if git grep -n 'Write.TenantService' -- 'Write/UserService' ; then
+            echo "::error::the User service references the Tenant service"; exit 1
+          fi
+          echo "the write model is share-nothing and unaware of its consumers"
+
+      - name: The read model calls nobody on the message path
+        # A projection that calls a core service to fill a gap has become the runtime fan-out it
+        # exists to replace. The one HTTP call it makes is the REBUILD replay, which is an
+        # operational action, not a query path.
+        run: |
+          set -euo pipefail
+          cd cqrs-read-models/dotnet
+          if git grep -n 'AddOutboundRouting' -- 'ReadModel/*'; then
+            echo "::error::the read model declared outbound routing"
+            exit 1
+          fi
+          grep -q 'ReplaySources' ReadModel/Rebuild.cs \
+            || { echo "::error::the replay source moved - re-check what this guard covers"; exit 1; }
+          echo "the read model consumes and answers; it does not call"
+
+      - name: Compose up (build)
+        run: |
+          for attempt in 1 2 3; do
+            if docker compose -f "$COMPOSE_FILE" up -d --build; then exit 0; fi
+            echo "::warning::compose build failed (attempt $attempt/3); retrying in 30s"
+            docker compose -f "$COMPOSE_FILE" down -v || true
+            sleep 30
+          done
+          echo "::error::compose build failed after 3 attempts"
+          exit 1
+
+      - name: Wait for the estate
+        run: |
+          for url in http://localhost:9480/events http://localhost:9481/events http://localhost:9482/tenants; do
+            ok=0
+            for i in $(seq 1 60); do
+              status=$(curl -s -o /dev/null -w '%{http_code}' "$url" || true)
+              if [ "$status" = "200" ]; then ok=1; break; fi
+              sleep 2
+            done
+            [ "$ok" = "1" ] || { echo "::error::$url never came up"; exit 1; }
+          done
+
+      - name: The authority is current; the read model lags
+        # Both halves matter. A read model that never lags is not eventually consistent, it is just
+        # slow; a demo that hides the lag teaches the wrong thing about when to read which side.
+        run: |
+          set -euo pipefail
+          code=$(curl -s -o t.json -w '%{http_code}' -X POST http://localhost:9480/tenants \
+            -H 'content-type: application/json' -d '{"company":"acme"}')
+          cat t.json; echo "HTTP $code"
+          [ "$code" = "202" ] || { echo "::error::a write must not claim the view is updated"; exit 1; }
+          TID=$(jq -r '.tenantId' t.json)
+          echo "TID=$TID" >> "$GITHUB_ENV"
+          # Immediately: the authority has it...
+          a=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:9480/tenants/$TID")
+          [ "$a" = "200" ] || { echo "::error::the write side must be readable immediately"; exit 1; }
+          # ...and the read model does not, inside the (deliberately widened) lag window.
+          r=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:9482/tenants/$TID")
+          [ "$r" = "404" ] \
+            || { echo "::error::expected the read model to lag with PROJECTION_DELAY_MS set, got $r"; exit 1; }
+          echo "authority 200, read model 404 - eventual consistency, visible"
+
+      - name: The join the write side cannot do
+        run: |
+          set -euo pipefail
+          # Four deliveries of ONE user event, and a second user. A fold converges; a counter drifts.
+          curl -fsS -X POST http://localhost:9481/users -H 'content-type: application/json' \
+            -d "{\"tenantId\":\"$TID\",\"email\":\"a@acme.com\",\"emitTimes\":4}" -o u1.json
+          curl -fsS -X POST http://localhost:9481/users -H 'content-type: application/json' \
+            -d "{\"tenantId\":\"$TID\",\"email\":\"b@acme.com\"}" -o u2.json
+          jq -e '.emitted == 4' u1.json >/dev/null || { echo "::error::the duplicate publish did not happen"; exit 1; }
+          # Converge.
+          ok=0
+          for i in $(seq 1 60); do
+            curl -s "http://localhost:9482/tenants/$TID" -o v.json || true
+            if jq -e '.userCount == 2 and .company == "acme"' v.json >/dev/null 2>&1; then ok=1; break; fi
+            sleep 2
+          done
+          cat v.json
+          [ "$ok" = "1" ] || { echo "::error::the view never converged to 2 users"; exit 1; }
+          # The write side genuinely cannot answer this - there is no such route on either service.
+          w=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:9480/tenants/$TID/users")
+          [ "$w" != "200" ] \
+            || { echo "::error::a core service answered a cross-aggregate query - the write model leaked"; exit 1; }
+          echo "one indexed read on the read model; nothing equivalent on the write side"
+
+      - name: A rename, and a user whose tenant event has not arrived
+        run: |
+          set -euo pipefail
+          curl -fsS -X POST http://localhost:9480/renames -H 'content-type: application/json' \
+            -d "{\"tenantId\":\"$TID\",\"company\":\"Acme Corporation\"}" -o r.json
+          jq -e '.version == 2' r.json >/dev/null || { echo "::error::the rename did not bump the version"; exit 1; }
+          # A user for a tenant that does not exist. The projection must produce a row that SAYS it
+          # has not caught up rather than one that looks like a nameless tenant.
+          curl -fsS -X POST http://localhost:9481/users -H 'content-type: application/json' \
+            -d '{"tenantId":"tnt-notyet0001","email":"ghost@nowhere.example"}' -o g.json
+          ok=0
+          for i in $(seq 1 60); do
+            curl -s http://localhost:9482/tenants -o all.json || true
+            if jq -e --arg tid "$TID" \
+                 '([.tenants[] | select(.tenantId == $tid) | select(.company == "Acme Corporation")] | length == 1)
+                  and ([.tenants[] | select(.tenantId == "tnt-notyet0001") | select(.tenantVersion == 0)] | length == 1)' \
+                 all.json >/dev/null 2>&1; then ok=1; break; fi
+            sleep 2
+          done
+          cat all.json
+          [ "$ok" = "1" ] || { echo "::error::the view never reached the expected state"; exit 1; }
+          echo "rename applied; the not-caught-up row reports tenantVersion 0 rather than a blank name"
+
+      - name: The view is derived - delete it and replay
+        run: |
+          set -euo pipefail
+          curl -fsS http://localhost:9482/tenants -o before.json
+          curl -fsS -X POST http://localhost:9482/rebuild -H 'content-type: application/json' -d '{}' -o rb.json
+          cat rb.json
+          curl -fsS http://localhost:9482/tenants -o after.json
+          diff <(jq -S . before.json) <(jq -S . after.json) \
+            || { echo "::error::a rebuild produced a different view - the projection is not a fold"; exit 1; }
+          echo "rebuilt from the event log, byte-identical"
+
+      - name: Replayed BACKWARDS, the view is still identical
+        # The strongest statement the example can make. Renames before their creates, users before
+        # their tenants - and the same answer. An ordering dependency the projection did not admit to
+        # would surface right here, instead of on the day a redelivery arrives out of order.
+        run: |
+          set -euo pipefail
+          curl -fsS -X POST http://localhost:9482/rebuild -H 'content-type: application/json' \
+            -d '{"reverse":true}' -o rev.json
+          cat rev.json
+          jq -e '.reversed == true' rev.json >/dev/null || { echo "::error::the reverse replay did not run"; exit 1; }
+          curl -fsS http://localhost:9482/tenants -o reversed.json
+          diff <(jq -S . after.json) <(jq -S . reversed.json) \
+            || { echo "::error::the fold depends on event order"; exit 1; }
+          echo "order-insensitive: forwards and backwards agree"
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose -f "$COMPOSE_FILE" logs || true
+
+      - name: Compose down
+        if: always()
+        run: docker compose -f "$COMPOSE_FILE" down -v || true
