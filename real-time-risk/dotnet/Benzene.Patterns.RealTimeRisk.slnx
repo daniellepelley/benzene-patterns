@@ -5,8 +5,14 @@
   <Folder Name="/PricingService/">
     <Project Path="PricingService/Benzene.Patterns.RealTimeRisk.PricingService.csproj" />
   </Folder>
+  <Folder Name="/RiskCoordinator/">
+    <Project Path="RiskCoordinator/Benzene.Patterns.RealTimeRisk.RiskCoordinator.csproj" />
+  </Folder>
   <Folder Name="/RiskReadModels/">
     <Project Path="RiskReadModels/Benzene.Patterns.RealTimeRisk.RiskReadModels.csproj" />
+  </Folder>
+  <Folder Name="/RiskWorker/">
+    <Project Path="RiskWorker/Benzene.Patterns.RealTimeRisk.RiskWorker.csproj" />
   </Folder>
   <Folder Name="/TradeLedger/">
     <Project Path="TradeLedger/Benzene.Patterns.RealTimeRisk.TradeLedger.csproj" />

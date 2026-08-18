@@ -24,6 +24,15 @@ public static class Topics
     /// </summary>
     public const string PriceStream = "price:stream";
 
+    /// <summary>Command: start an end-of-day risk run. Handled by the Risk Coordinator.</summary>
+    public const string RiskRun = "risk:run";
+
+    /// <summary>
+    /// Command: revalue one shard of the book. Handled by the Risk Worker, and the topic the
+    /// coordinator scatters across the worker pool.
+    /// </summary>
+    public const string RiskShard = "risk:shard";
+
     /// <summary>
     /// The event type discriminator stored on every ledger event (<c>EventEnvelope.EventType</c> /
     /// <c>StoredEvent.EventType</c>). One event type today; more (cash movements, fees) are future work

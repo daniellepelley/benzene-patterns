@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Exact [version] pins for every Benzene package, direct and transitive - see TradeLedger's
+         .csproj for why a bare version is a floor rather than a pin here. -->
+    <PackageReference Include="Benzene.AspNet.Core" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Clients" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.MapReduce" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Abstractions" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Abstractions.MessageHandlers" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Abstractions.Messages" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Abstractions.Middleware" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Abstrations.Pipelines" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.CodeGen.SourceGenerators" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Core" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Core.MessageHandlers" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Core.Messages" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Core.Middleware" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Http" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Microsoft.Dependencies" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Results" Version="[0.0.2-alpha.4]" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Contracts\Benzene.Patterns.RealTimeRisk.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,9 +1,9 @@
 name: Smoke - Real-Time Risk (.NET)
 
-# End-to-end smoke test for the .NET Trade Ledger + Risk Read Models + Pricing Service slice: build
-# the images, `docker compose up`, book a trade, assert the read model eventually reflects it, and
-# exercise all three of the Pricing Service's gRPC shapes. Fully self-contained (DynamoDB Local, no
-# cloud credentials or account needed).
+# End-to-end smoke test for the whole .NET slice: build the images, `docker compose up`, book
+# trades, assert the read model eventually reflects them, exercise all three of the Pricing Service's
+# gRPC shapes, and run an end-of-day risk map-reduce across a worker pool. Fully self-contained
+# (DynamoDB Local, no cloud credentials or account needed).
 on:
   push:
     branches: [ "main" ]
@@ -51,7 +51,10 @@ jobs:
         # unsatisfiable pin still fails all three attempts and reports the same NU1102.
         run: |
           for attempt in 1 2 3; do
-            if docker compose -f "$COMPOSE_FILE" up -d --build; then
+            # --scale risk-worker=3: the coordinator routes to ONE url and Compose's DNS
+            # round-robins it across the replicas, so this asserts the fan-out really is a pool
+            # rather than a single container answering three times.
+            if docker compose -f "$COMPOSE_FILE" up -d --build --scale risk-worker=3; then
               exit 0
             fi
             echo "::warning::compose build failed (attempt $attempt/3); retrying in 30s"
@@ -198,6 +201,67 @@ jobs:
             || { echo "::error::expected GOOG only, with the unknown symbol ignored"; exit 1; }
           echo "::endgroup::"
 
+      - name: Assert the end-of-day risk map-reduce
+        run: |
+          set -euo pipefail
+
+          # A second book, so the scatter genuinely fans out across more than one shard, and a
+          # position in a symbol the price feed does not cover, so the run has something to be
+          # honest about.
+          curl -fsS -X POST http://localhost:8081/trades -H 'content-type: application/json' \
+            -d '{"book":"risk-b","symbol":"MSFT","side":"Sell","quantity":50,"price":402.10}' -o /dev/null
+          curl -fsS -X POST http://localhost:8081/trades -H 'content-type: application/json' \
+            -d '{"book":"risk-b","symbol":"NOT-A-SYMBOL","side":"Buy","quantity":7,"price":1.00}' -o /dev/null
+
+          # Both books must reach the projection before the run, or the risk number is computed over
+          # a read model that has not caught up - which would be a racy test rather than a wrong
+          # product. The run itself is correct either way; only the assertion needs the wait.
+          for book in smoke-test risk-b; do
+            ok=0
+            for i in $(seq 1 90); do
+              curl -fsS "http://localhost:8082/books/$book/positions" -o "positions-$book.json"
+              if [ "$(jq -r '.positions | length' "positions-$book.json")" -gt 0 ]; then ok=1; break; fi
+              sleep 2
+            done
+            [ "$ok" = "1" ] || { echo "::error::$book never projected"; cat "positions-$book.json"; exit 1; }
+          done
+
+          echo "::group::risk run"
+          curl -fsS -X POST http://localhost:8084/risk/runs \
+            -H 'content-type: application/json' \
+            -d '{"books":["smoke-test","risk-b"],"shardSize":1}' -o risk.json
+          cat risk.json
+          echo "::endgroup::"
+
+          # The scatter fanned out over both books.
+          jq -e '.shardCount == 2' risk.json >/dev/null \
+            || { echo "::error::expected 2 shards"; exit 1; }
+          # Every shard came back, so the total covers the whole run.
+          jq -e '.isComplete == true and (.failedShards | length) == 0' risk.json >/dev/null \
+            || { echo "::error::a shard failed"; exit 1; }
+          # AAPL and MSFT priced; the unknown symbol NOT valued, and NAMED rather than silently
+          # treated as worth zero. This is the assertion the whole partial-coverage design is for.
+          jq -e '.positionsValued == 2' risk.json >/dev/null \
+            || { echo "::error::expected 2 priced positions"; exit 1; }
+          jq -e '.isFullyPriced == false and (.unpricedSymbols | index("NOT-A-SYMBOL") != null)' risk.json >/dev/null \
+            || { echo "::error::an unpriceable position must be reported, not valued at zero"; exit 1; }
+          # The two kinds of incompleteness are independent: this run is COMPLETE (no shard failed)
+          # and NOT FULLY PRICED. Collapsing them into one flag would lose exactly that distinction.
+          jq -e '.isComplete == true and .isFullyPriced == false' risk.json >/dev/null \
+            || { echo "::error::shard coverage and price coverage must report separately"; exit 1; }
+          # 100 AAPL long plus 50 MSFT short is a net short book at these prices, and the total is
+          # market value plus realized cash - asserted as a relation rather than a magic number,
+          # since the feed's marks move.
+          jq -e '(.totalValue - (.marketValue + .realizedCash)) | fabs < 0.01' risk.json >/dev/null \
+            || { echo "::error::totalValue must be marketValue + realizedCash"; exit 1; }
+
+          echo "::group::an empty book list is rejected, not answered with zero"
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:8084/risk/runs \
+            -H 'content-type: application/json' -d '{"books":[]}')
+          echo "HTTP $code"
+          [ "$code" = "422" ] || { echo "::error::expected 422, got $code"; exit 1; }
+          echo "::endgroup::"
+
       - name: Dump logs on failure
         if: failure()
         # No --tail limit, and one service at a time: risk-read-models alone emits 2 log lines per
@@ -206,7 +270,7 @@ jobs:
         # failed projection were being truncated away before they ever reached this step's output.
         run: |
           docker compose -f "$COMPOSE_FILE" ps -a || true
-          for service in dynamodb-local trade-ledger risk-read-models pricing; do
+          for service in dynamodb-local trade-ledger risk-read-models pricing risk-worker risk-coordinator; do
             echo "::group::$service full logs"
             docker compose -f "$COMPOSE_FILE" logs "$service" || true
             echo "::endgroup::"

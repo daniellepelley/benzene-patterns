@@ -14,7 +14,7 @@ at a time, in every Benzene language port.
 | Risk Read Models | [CQRS & read models](https://github.com/daniellepelley/Benzene/blob/main/docs/patterns/cqrs-read-models.md) | ✅ | — | — | — |
 | Market-Data Aggregator | [Stream processing](https://github.com/daniellepelley/Benzene/blob/main/docs/patterns/streaming-processing.md) | not started | — | — | — |
 | Valuation Service | [Choreography](https://github.com/daniellepelley/Benzene/blob/main/docs/patterns/choreography.md) | not started | — | — | — |
-| Risk Coordinator | [Map-reduce](https://github.com/daniellepelley/Benzene/blob/main/docs/patterns/map-reduce.md) | not started | — | — | — |
+| Risk Coordinator | [Map-reduce](https://github.com/daniellepelley/Benzene/blob/main/docs/patterns/map-reduce.md) | ✅ | — | — | — |
 | Pricing Service | [gRPC](https://github.com/daniellepelley/Benzene/blob/main/docs/patterns/service-communication.md) streaming | ✅ | — | — | — |
 
 Built in the order the reference doc itself recommends ("Building it, in order" §): Trade Ledger
@@ -33,6 +33,13 @@ book). `POST /trades` / topic `trade:book`.
 **Risk Read Models** (`dotnet/RiskReadModels`) — consumes the ledger table's DynamoDB Stream in the
 background and projects it into a per-book, per-symbol position + realized-cash view. `GET
 /books/{book}/positions` / topic `book:positions`.
+
+**Risk Coordinator + Risk Worker** (`dotnet/RiskCoordinator`, `dotnet/RiskWorker`) — the end-of-day
+number. The coordinator partitions the books into shards, scatters `risk:shard` across a pool of
+stateless workers with `Benzene.MapReduce`'s `ScatterGatherAsync`, and folds the partials into a
+firm-level total. Each worker reads its books' positions from **Risk Read Models** and marks them to
+market against the **Pricing Service** — so this is also where the platform stops being a set of
+services and starts being one system. `POST /risk/runs` / topic `risk:run`.
 
 **Pricing Service** (`dotnet/PricingService`) — a low-latency streaming price/greeks feed over
 **gRPC**, for desks that need a live subscription rather than an event. Three of gRPC's four RPC
@@ -55,6 +62,12 @@ it is open).
                  │  [gRPC streaming] │
                  └───────────────────┘
                  (no cloud dependency, no shared state - see below)
+
+  POST /risk/runs ┌──────────────────┐   risk:shard × N     ┌──────────────┐  positions ─► Risk Read Models
+  ───────────────►│ Risk Coordinator │═══ scatter ═════════►│ Risk Worker  │  marks     ─► Pricing Service
+                  │   [map-reduce]   │◄══ partials ═════════│  × replicas  │
+                  └──────────────────┘      gather          └──────────────┘
+                   folds to one firm-level number, and says what it could not cover
 ```
 
 ### Run it
@@ -96,6 +109,36 @@ printf '{"symbol":"AAPL"}\n{"symbol":"TSLA"}\n' \
 grpcurl -plaintext -d '{}' localhost:8083 grpc.health.v1.Health/Check
 ```
 
+And the end-of-day risk run, which fans out across the worker pool:
+
+```
+# Scale the pool first if you want to watch it fan out:
+#   docker compose up --build --scale risk-worker=4
+
+curl -X POST http://localhost:8084/risk/runs \
+  -H 'content-type: application/json' \
+  -d '{"books":["desk-a"],"shardSize":1}'
+```
+
+```jsonc
+{
+  "shardCount": 2,
+  "marketValue": -3972.93,
+  "realizedCash": 3592.00,
+  "totalValue": -380.93,
+  "positionsValued": 3,
+  "unpricedSymbols": ["WEIRDCO"],   // valued at nothing, and SAID so - not silently zero
+  "failedShards": [],
+  "isComplete": true,               // every shard came back
+  "isFullyPriced": false            // ...but a symbol had no mark
+}
+```
+
+`isComplete` and `isFullyPriced` are two different questions, reported separately on purpose: a
+failed **shard** means a slice of the book was never valued at all, while an unpriced **symbol** means
+it was valued and the price was missing. Different causes, different fixes — one "complete" flag would
+send an operator looking in the wrong place.
+
 No AWS account needed: the official [DynamoDB Local](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/DynamoDBLocal.html)
 image (`amazon/dynamodb-local`) provides the table and its stream, genuinely free with no signup.
 (LocalStack was the original choice here and would have been a fine one, but its community and pro
@@ -121,6 +164,27 @@ printing those would make the reference doc's "price/greeks feed" decorative rat
 When the aggregator lands, swapping the simulated source for it is a change to one file: the handlers
 take a symbol and a sequence and return a tick, and none of them knows where the price came from.
 
+### The map-reduce's local substitute is a routing-table entry, not a reimplementation
+
+In production the coordinator's scatter resolves to **Lambda-to-Lambda invokes**: hundreds of
+stateless workers, burst-cheap. Locally it resolves to the worker pool's BenzeneMessage HTTP endpoint
+instead — and that is the *whole* difference. `ScatterGatherAsync`, the bounded fan-out, the fold and
+the partial-failure policy are byte-identical either way, because the scatter goes through the
+**outbound routing table** rather than through a transport API. One line in
+`RiskCoordinator/StartUp.cs` knows which transport it is; nothing above it does.
+
+`docker compose up --scale risk-worker=N` is the local form of the burst: Compose's DNS round-robins
+`risk-worker` across the replicas, so the coordinator's single routed URL fans out without knowing
+how many there are.
+
+One piece of plumbing is hand-rolled and should not have to be. `Benzene.Clients.Http` ships
+`HttpBenzeneMessageClient`, documented as "the HTTP counterpart of the AWS Lambda invoke path", but it
+is registered as an `IBenzeneMessageClient` and there is no `UseBenzeneMessageOverHttp()` extension on
+`OutboundContext` to bind it into a route, the way `UseSqs`/`UseServiceBus`/`UseInProcess` do. So
+`RiskCoordinator/BenzeneMessageOverHttp.cs` is a ~50-line adapter over documented seams. **That is a
+gap in the framework, noted here rather than papered over** — closing it upstream would delete this
+file.
+
 ### A deliberate simplification for this local slice
 
 In production, the Risk Read Models projection would run as a real AWS Lambda function triggered by
@@ -135,7 +199,8 @@ way; swapping in a real Lambda-hosted handler later is a hosting change, not a r
 
 ## Roadmap
 
-1. **Market-Data Aggregator + Valuation Service** — needs its own short design pass first: Benzene's
+1. **Market-Data Aggregator + Valuation Service** — now the only item still genuinely blocked on a
+   decision. Needs its own short design pass first: Benzene's
    windowed/partitioned/checkpointed streaming binding (`UseKinesisStream`) exists for Kinesis, Azure
    Event Hubs, and Cosmos DB change feed, but **not** Kafka (which only has a plain per-record
    consumer) - so "run it locally" isn't a drop-in transport swap here the way DynamoDB was. LocalStack's
@@ -144,9 +209,10 @@ way; swapping in a real Lambda-hosted handler later is a hosting change, not a r
    "no account needed" bar this repo otherwise clears. The alternative is a new `UseKafkaStream` binding
    in `benzene-dotnet` (a real framework enhancement, out of scope for just building this one demo).
    Decide before starting this service.
-2. **Risk Coordinator** (map-reduce) — `Benzene.MapReduce`'s `ScatterGatherAsync` over Lambda-to-Lambda
-   invoke in production; local Docker Compose needs its own substitute (LocalStack Lambda concurrency,
-   or an HTTP-addressed worker pool) worked out on its own.
+2. ~~**Risk Coordinator** (map-reduce)~~ — **done.** The substitute needed no decision in the end:
+   because the scatter routes through the outbound routing table, pointing `risk:shard` at an
+   HTTP-addressed worker pool is a configuration change that leaves every line of the map-reduce
+   itself untouched. LocalStack Lambda concurrency was never needed. See above.
 3. ~~**Pricing Service** (gRPC streaming)~~ — **done.** Built ahead of items 1 and 2 precisely because
    it has no cloud dependency and therefore no blocked design decision: it holds no state, talks to
    nothing, and needed no local substitute for anything. Its only stand-in is the simulated market

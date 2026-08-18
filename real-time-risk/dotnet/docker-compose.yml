@@ -1,7 +1,8 @@
 name: benzene-patterns-real-time-risk
 
-# The Real-Time Risk & Trading Platform (docs/patterns/reference-real-time-risk.md), Trade Ledger +
-# Risk Read Models + Pricing Service slice, running entirely locally - no cloud account required.
+# The Real-Time Risk & Trading Platform (docs/patterns/reference-real-time-risk.md): Trade Ledger,
+# Risk Read Models, Pricing Service, and the Risk Coordinator/Worker map-reduce pair - running
+# entirely locally, no cloud account required.
 #
 # The Pricing Service speaks gRPC (h2c) rather than HTTP, and has server reflection on, so grpcurl
 # needs no .proto file to drive it.
@@ -11,6 +12,8 @@ name: benzene-patterns-real-time-risk
 #     -d '{"book":"desk-a","symbol":"AAPL","side":"Buy","quantity":100,"price":150.25}'
 #   curl http://localhost:8082/books/desk-a/positions
 #   grpcurl -plaintext -d '{"symbol":"AAPL"}' localhost:8083 pricing.Pricing/GetPrice
+#   curl -X POST http://localhost:8084/risk/runs -H 'content-type: application/json' \
+#     -d '{"books":["desk-a"]}'
 #
 # The official AWS "DynamoDB Local" image (amazon/dynamodb-local) provides the table + stream -
 # genuinely free, no account/token needed (unlike LocalStack, whose community and pro images merged
@@ -52,6 +55,37 @@ services:
     image: benzene-patterns-pricing:compose
     ports:
       - "8083:8080"
+
+  # The map-reduce pair (docs/patterns/reference-real-time-risk.md §4). The worker is deliberately
+  # replica-scaled rather than singular: `docker compose up --scale risk-worker=4` is the local form
+  # of "a burst of stateless workers", and Compose's DNS round-robins risk-worker across them, so the
+  # coordinator's single routed URL fans out without knowing how many there are.
+  risk-worker:
+    build:
+      context: .
+      dockerfile: RiskWorker/Dockerfile
+    image: benzene-patterns-risk-worker:compose
+    environment:
+      - READ_MODELS_URL=http://risk-read-models:8080
+      - PRICING_URL=http://pricing:8080
+    # No ports: this is a private worker on the Compose network, not an edge service. The
+    # BenzeneMessage endpoint it serves is documented as opt-in and not for unauthenticated public
+    # exposure, and that is respected here rather than worked around.
+    depends_on:
+      - risk-read-models
+      - pricing
+
+  risk-coordinator:
+    build:
+      context: .
+      dockerfile: RiskCoordinator/Dockerfile
+    image: benzene-patterns-risk-coordinator:compose
+    environment:
+      - RISK_WORKER_URL=http://risk-worker:8080/benzene-message
+    ports:
+      - "8084:8080"
+    depends_on:
+      - risk-worker
 
   risk-read-models:
     build:
