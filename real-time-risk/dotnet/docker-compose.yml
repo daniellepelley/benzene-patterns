@@ -1,12 +1,16 @@
 name: benzene-patterns-real-time-risk
 
 # The Real-Time Risk & Trading Platform (docs/patterns/reference-real-time-risk.md), Trade Ledger +
-# Risk Read Models slice, running entirely locally - no cloud account required.
+# Risk Read Models + Pricing Service slice, running entirely locally - no cloud account required.
+#
+# The Pricing Service speaks gRPC (h2c) rather than HTTP, and has server reflection on, so grpcurl
+# needs no .proto file to drive it.
 #
 #   docker compose up --build
 #   curl -X POST http://localhost:8081/trades -H 'content-type: application/json' \
 #     -d '{"book":"desk-a","symbol":"AAPL","side":"Buy","quantity":100,"price":150.25}'
 #   curl http://localhost:8082/books/desk-a/positions
+#   grpcurl -plaintext -d '{"symbol":"AAPL"}' localhost:8083 pricing.Pricing/GetPrice
 #
 # The official AWS "DynamoDB Local" image (amazon/dynamodb-local) provides the table + stream -
 # genuinely free, no account/token needed (unlike LocalStack, whose community and pro images merged
@@ -38,6 +42,16 @@ services:
       - "8081:8080"
     depends_on:
       - dynamodb-local
+
+  # The only service here with no cloud dependency at all - no DynamoDB, nothing to provision, no
+  # stream to poll - so it has no depends_on and is the one you can run on its own.
+  pricing:
+    build:
+      context: .
+      dockerfile: PricingService/Dockerfile
+    image: benzene-patterns-pricing:compose
+    ports:
+      - "8083:8080"
 
   risk-read-models:
     build:

@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+option csharp_namespace = "Benzene.Patterns.RealTimeRisk.PricingService";
+
+package pricing;
+
+// The low-latency internal pricing feed from docs/patterns/reference-real-time-risk.md section 6.
+//
+// Three of gRPC's four RPC shapes, because a desk needs all three: a snapshot for a one-off
+// valuation, a subscription for a single instrument on a screen, and a bidirectional session for a
+// blotter whose watch list changes while it is open. Every method is served by an ordinary Benzene
+// IMessageHandler - the transport is faster, the handler shape is the same one the HTTP services in
+// this platform use.
+service Pricing {
+  // Snapshot: one price for one symbol, right now.
+  rpc GetPrice (PriceRequest) returns (PriceTick);
+
+  // Subscription: a live tick stream for one symbol until the caller's deadline or cancellation.
+  rpc SubscribePrices (PriceRequest) returns (stream PriceTick);
+
+  // Session: the caller adjusts its watch list while the stream is open, and receives ticks for
+  // whatever it is currently watching. The reference doc's headline shape for this service.
+  rpc PriceStream (stream WatchRequest) returns (stream PriceTick);
+}
+
+message PriceRequest {
+  string symbol = 1;
+
+  // Cap on the number of ticks for SubscribePrices; 0 means "until the deadline or cancellation".
+  // Present so a smoke test can ask for a finite stream without racing a timeout.
+  int32 max_ticks = 2;
+}
+
+message WatchRequest {
+  string symbol = 1;
+
+  // false adds the symbol to this session's watch list, true removes it.
+  bool unwatch = 2;
+}
+
+message PriceTick {
+  string symbol = 1;
+  double bid = 2;
+  double ask = 3;
+  double mid = 4;
+
+  // Sensitivities for a notional at-the-money 30-day call on the symbol - see PriceFeed.cs for why
+  // an option's greeks and not the cash equity's.
+  Greeks greeks = 5;
+
+  // RFC 3339 UTC, so a tick is quotable without knowing the reader's zone.
+  string as_of_utc = 6;
+
+  // Monotonic per symbol, so a consumer can spot a gap without comparing timestamps.
+  int64 sequence = 7;
+}
+
+message Greeks {
+  double delta = 1;
+  double gamma = 2;
+  double vega = 3;
+  double theta = 4;
+}

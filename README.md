@@ -24,7 +24,9 @@ Each pattern is runnable locally via Docker Compose — no cloud account require
 
 Early and incremental. The [real-time risk platform](real-time-risk/README.md) is being built one
 service at a time, in .NET first, per its own README's build order — see that document for exactly
-what's running today versus what's planned.
+what's running today versus what's planned. Three of its six services run today (Trade Ledger, Risk
+Read Models, Pricing Service), covering event sourcing, CQRS, and gRPC streaming; the remaining three
+are each blocked on a design decision that document records rather than on the code.
 
 ## Conventions
 

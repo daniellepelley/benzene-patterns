@@ -1,0 +1,52 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Protobuf Include="Protos\pricing.proto" GrpcServices="Server" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Consumed from NuGet like any other Benzene application - this repo is downstream of the
+         language ports, not a sibling of them.
+
+         Every Benzene.* package used, direct AND transitive, is pinned with the [version] exact-match
+         bracket rather than a bare version. A bare version is a MINIMUM floor to NuGet, and nuget.org
+         still hosts older releases of these packages under a legacy four-part scheme (e.g.
+         0.0.2.18-alpha) whose numeric core sorts ABOVE 0.0.2-alpha.4's regardless of the prerelease
+         label - so on a cold restore (every Docker build here starts with no package cache) an
+         unpinned transitive could float up to an incompatible API shape. This bit the other two
+         services in CI on three separate packages before the brackets went in; see
+         TradeLedger's .csproj for the full account. -->
+    <PackageReference Include="Benzene.AspNet.Core" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Grpc" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Grpc.AspNet" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Abstractions" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Abstractions.MessageHandlers" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Abstractions.Messages" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Abstractions.Middleware" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Abstrations.Pipelines" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.CodeGen.SourceGenerators" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Core" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Core.MessageHandlers" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Core.Messages" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Core.Middleware" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.HealthChecks.Core" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Http" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Microsoft.Dependencies" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.Results" Version="[0.0.2-alpha.4]" />
+    <!-- Direct rather than transitive through Benzene.Grpc.AspNet: this brings Grpc.Tools, whose
+         MSBuild targets compile the <Protobuf> item above, and build-time assets do not flow
+         transitively. Pinned to the version Benzene.Grpc.AspNet itself references. -->
+    <PackageReference Include="Grpc.AspNetCore" Version="2.62.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Contracts\Benzene.Patterns.RealTimeRisk.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,8 +1,9 @@
 name: Smoke - Real-Time Risk (.NET)
 
-# End-to-end smoke test for the .NET Trade Ledger + Risk Read Models slice: build the images,
-# `docker compose up`, book a trade, and assert the read model eventually reflects it. Fully
-# self-contained (DynamoDB Local, no cloud credentials or account needed).
+# End-to-end smoke test for the .NET Trade Ledger + Risk Read Models + Pricing Service slice: build
+# the images, `docker compose up`, book a trade, assert the read model eventually reflects it, and
+# exercise all three of the Pricing Service's gRPC shapes. Fully self-contained (DynamoDB Local, no
+# cloud credentials or account needed).
 on:
   push:
     branches: [ "main" ]
@@ -27,6 +28,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install grpcurl
+        # The Pricing Service is gRPC, so curl cannot drive it. grpcurl needs no .proto file because
+        # the service has server reflection on - the same one-command reachability the README promises
+        # a reader, asserted here rather than assumed.
+        run: |
+          curl -fsSL https://github.com/fullstorydev/grpcurl/releases/download/v1.9.1/grpcurl_1.9.1_linux_x86_64.tar.gz \
+            | sudo tar -xz -C /usr/local/bin grpcurl
+          grpcurl --version
 
       - name: Compose up (build)
         # Retried because the build's `dotnet restore` runs inside a fresh container with no NuGet
@@ -69,6 +79,26 @@ jobs:
             fi
           done
 
+      - name: Wait for the Pricing Service to report SERVING
+        # Unlike the other two, this service HAS a real health check (grpc.health.v1, bridged from
+        # Benzene's own), so this waits on a genuine readiness signal rather than on "something
+        # answered". That is also the assertion that reflection and the interceptor are both wired:
+        # a reachable port with a broken pipeline would still fail here.
+        run: |
+          ok=0
+          for i in $(seq 1 30); do
+            if grpcurl -plaintext -d '{}' localhost:8083 grpc.health.v1.Health/Check 2>/dev/null \
+                | jq -e '.status == "SERVING"' >/dev/null; then ok=1; break; fi
+            sleep 2
+          done
+          if [ "$ok" != "1" ]; then
+            echo "::error::pricing service never reported SERVING"
+            docker compose -f "$COMPOSE_FILE" logs pricing || true
+            exit 1
+          fi
+          echo "--- reflection lists ---"
+          grpcurl -plaintext localhost:8083 list
+
       - name: Book a trade
         run: |
           curl -fsS -X POST http://localhost:8081/trades \
@@ -107,6 +137,67 @@ jobs:
           jq -e '.positions[] | select(.symbol == "AAPL" and .netQuantity == 100)' positions.json >/dev/null \
             || { echo "::error::expected a 100-share AAPL position"; exit 1; }
 
+      - name: Assert all three gRPC shapes (unary, server-streaming, bidirectional)
+        run: |
+          set -euo pipefail
+
+          echo "::group::unary - GetPrice"
+          grpcurl -plaintext -d '{"symbol":"AAPL"}' localhost:8083 pricing.Pricing/GetPrice \
+            > price.json
+          cat price.json
+          jq -e '.symbol == "AAPL" and .mid > 0 and .bid < .mid and .ask > .mid' price.json >/dev/null \
+            || { echo "::error::GetPrice did not return a sane two-sided quote"; exit 1; }
+          # Greeks for a notional at-the-money 30-day call: delta near 0.5, gamma and vega positive,
+          # theta negative. Asserting the SIGNS and the rough magnitude catches a feed wired to the
+          # wrong formula, which a "greeks block is present" check would happily pass.
+          jq -e '.greeks | .delta > 0.4 and .delta < 0.65 and .gamma > 0 and .vega > 0 and .theta < 0' \
+            price.json >/dev/null \
+            || { echo "::error::greeks are not those of an ATM call"; exit 1; }
+          echo "::endgroup::"
+
+          echo "::group::unary - unknown symbol maps to NotFound"
+          # The result-status mapping the reference doc calls out: the handler returns a Benzene
+          # NotFound and knows nothing about gRPC; Benzene turns it into StatusCode.NotFound.
+          if grpcurl -plaintext -d '{"symbol":"NOT-A-SYMBOL"}' localhost:8083 pricing.Pricing/GetPrice \
+              > notfound.txt 2>&1; then
+            echo "::error::an unknown symbol should not have succeeded"; cat notfound.txt; exit 1
+          fi
+          cat notfound.txt
+          grep -q 'NotFound' notfound.txt \
+            || { echo "::error::expected a NotFound status"; exit 1; }
+          echo "::endgroup::"
+
+          echo "::group::server-streaming - SubscribePrices"
+          # max_ticks makes the stream finite, so this asserts on a count rather than racing a
+          # deadline. Sequence numbers must be contiguous from 0 - a consumer spots a gap that way.
+          grpcurl -plaintext -d '{"symbol":"MSFT","max_ticks":3}' localhost:8083 \
+            pricing.Pricing/SubscribePrices > ticks.json
+          cat ticks.json
+          count=$(jq -s 'length' ticks.json)
+          [ "$count" = "3" ] || { echo "::error::expected 3 ticks, got $count"; exit 1; }
+          jq -se '[.[] | .sequence // "0" | tonumber] == [0,1,2]' ticks.json >/dev/null \
+            || { echo "::error::expected contiguous sequence numbers 0,1,2"; exit 1; }
+          echo "::endgroup::"
+
+          echo "::group::bidirectional - PriceStream"
+          # Two watches then half-close. Every watch is answered with an immediate snapshot, so the
+          # tick count is a function of what was asked for rather than of how long the session
+          # happened to stay open - deterministic without a sleep.
+          printf '{"symbol":"AAPL"}\n{"symbol":"TSLA"}\n' \
+            | grpcurl -plaintext -d @ localhost:8083 pricing.Pricing/PriceStream > session.json
+          cat session.json
+          jq -se '[.[] | .symbol] | (index("AAPL") != null) and (index("TSLA") != null)' session.json >/dev/null \
+            || { echo "::error::expected an immediate tick for each watched symbol"; exit 1; }
+          echo "::endgroup::"
+
+          echo "::group::bidirectional - an unknown symbol does not kill the session"
+          printf '{"symbol":"NOT-A-SYMBOL"}\n{"symbol":"GOOG"}\n' \
+            | grpcurl -plaintext -d @ localhost:8083 pricing.Pricing/PriceStream > mixed.json
+          cat mixed.json
+          jq -se '[.[] | .symbol] == ["GOOG"]' mixed.json >/dev/null \
+            || { echo "::error::expected GOOG only, with the unknown symbol ignored"; exit 1; }
+          echo "::endgroup::"
+
       - name: Dump logs on failure
         if: failure()
         # No --tail limit, and one service at a time: risk-read-models alone emits 2 log lines per
@@ -115,7 +206,7 @@ jobs:
         # failed projection were being truncated away before they ever reached this step's output.
         run: |
           docker compose -f "$COMPOSE_FILE" ps -a || true
-          for service in dynamodb-local trade-ledger risk-read-models; do
+          for service in dynamodb-local trade-ledger risk-read-models pricing; do
             echo "::group::$service full logs"
             docker compose -f "$COMPOSE_FILE" logs "$service" || true
             echo "::endgroup::"

@@ -2,6 +2,9 @@
   <Folder Name="/Contracts/">
     <Project Path="Contracts/Benzene.Patterns.RealTimeRisk.Contracts.csproj" />
   </Folder>
+  <Folder Name="/PricingService/">
+    <Project Path="PricingService/Benzene.Patterns.RealTimeRisk.PricingService.csproj" />
+  </Folder>
   <Folder Name="/RiskReadModels/">
     <Project Path="RiskReadModels/Benzene.Patterns.RealTimeRisk.RiskReadModels.csproj" />
   </Folder>
