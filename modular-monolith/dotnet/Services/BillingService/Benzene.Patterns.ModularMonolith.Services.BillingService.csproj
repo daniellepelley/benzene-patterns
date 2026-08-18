@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Benzene.AspNet.Core" />
+    <PackageReference Include="Benzene.Http" />
+    <PackageReference Include="Benzene.Microsoft.Dependencies" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Modules\Billing\Benzene.Patterns.ModularMonolith.Modules.Billing.csproj" />
+  </ItemGroup>
+
+</Project>

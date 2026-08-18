@@ -1,0 +1,18 @@
+<Solution>
+  <Folder Name="/Contracts/">
+    <Project Path="Contracts/Benzene.Patterns.ModularMonolith.Contracts.csproj" />
+  </Folder>
+  <Folder Name="/Modules/">
+    <Project Path="Modules/Billing/Benzene.Patterns.ModularMonolith.Modules.Billing.csproj" />
+    <Project Path="Modules/Orders/Benzene.Patterns.ModularMonolith.Modules.Orders.csproj" />
+    <Project Path="Modules/Shipping/Benzene.Patterns.ModularMonolith.Modules.Shipping.csproj" />
+  </Folder>
+  <Folder Name="/Monolith/">
+    <Project Path="Monolith/Benzene.Patterns.ModularMonolith.Monolith.csproj" />
+  </Folder>
+  <Folder Name="/Services/">
+    <Project Path="Services/BillingService/Benzene.Patterns.ModularMonolith.Services.BillingService.csproj" />
+    <Project Path="Services/OrdersService/Benzene.Patterns.ModularMonolith.Services.OrdersService.csproj" />
+    <Project Path="Services/ShippingService/Benzene.Patterns.ModularMonolith.Services.ShippingService.csproj" />
+  </Folder>
+</Solution>

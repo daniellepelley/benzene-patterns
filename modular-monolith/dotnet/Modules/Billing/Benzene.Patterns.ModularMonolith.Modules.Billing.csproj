@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- A module depends on the message-handler core and NOTHING about a transport. That is what
+         lets this same assembly be mounted behind an in-process pipeline in the monolith and behind
+         an HTTP one in the extracted service, unchanged. -->
+    <PackageReference Include="Benzene.Core.MessageHandlers" />
+    <PackageReference Include="Benzene.Abstractions.MessageHandlers" />
+    <PackageReference Include="Benzene.Results" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Contracts\Benzene.Patterns.ModularMonolith.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

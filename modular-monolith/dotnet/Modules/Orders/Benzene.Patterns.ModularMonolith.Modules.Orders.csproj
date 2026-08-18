@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Orders additionally references Benzene.Clients, for IBenzeneMessageSender - the one
+         interface a module needs to reach another module. Note what is NOT here: no transport
+         package. The sender resolves a topic through the routing table, and the routing table is the
+         host's business, not the module's. -->
+    <PackageReference Include="Benzene.Core.MessageHandlers" />
+    <PackageReference Include="Benzene.Abstractions.MessageHandlers" />
+    <PackageReference Include="Benzene.Clients" />
+    <PackageReference Include="Benzene.Http" />
+    <PackageReference Include="Benzene.Results" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Contracts\Benzene.Patterns.ModularMonolith.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,44 @@
+name: benzene-patterns-modular-monolith-extracted
+
+# PHASE n - the same modules, three deliverables.
+#
+# The extraction the pattern describes, run for real: Billing and Shipping in their own processes,
+# Orders routing to them over the wire. Diff Monolith/StartUp.cs against
+# Services/OrdersService/StartUp.cs - three routes changed transport, and that is the whole edit.
+#
+#   docker compose -f docker-compose.extracted.yml up --build
+#   curl -X POST http://localhost:9081/orders -H 'content-type: application/json' \
+#     -d '{"customer":"alice","sku":"WIDGET","quantity":2,"unitPrice":9.99}'
+#
+# Same response shape, same statuses, same compensation behaviour. What actually changed is latency,
+# the arrival of genuine partial failure, and the loss of any possibility of a shared transaction -
+# see the README's "Be honest about the wire".
+services:
+  orders:
+    build:
+      context: .
+      dockerfile: Services/OrdersService/Dockerfile
+    image: benzene-patterns-mm-orders:compose
+    environment:
+      - BILLING_URL=http://billing:8080/benzene-message
+      - SHIPPING_URL=http://shipping:8080/benzene-message
+    ports:
+      - "9081:8080"
+    depends_on:
+      - billing
+      - shipping
+
+  # No published ports on either module service: they are reached by topic from Orders, on the
+  # Compose network. The BenzeneMessage endpoint they serve is documented as opt-in and not for
+  # unauthenticated public exposure, which is respected here rather than worked around.
+  billing:
+    build:
+      context: .
+      dockerfile: Services/BillingService/Dockerfile
+    image: benzene-patterns-mm-billing:compose
+
+  shipping:
+    build:
+      context: .
+      dockerfile: Services/ShippingService/Dockerfile
+    image: benzene-patterns-mm-shipping:compose

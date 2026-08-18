@@ -19,6 +19,7 @@ Each pattern is runnable locally via Docker Compose — no cloud account require
 | Pattern | .NET | Go | TypeScript | Python |
 |---|---|---|---|---|
 | [Real-Time Risk & Trading Platform](real-time-risk/README.md) | 🚧 in progress | not started | not started | not started |
+| [The Modular Monolith, and the Road Out of It](modular-monolith/README.md) | ✅ | not started | not started | not started |
 
 ## Status of this repo
 

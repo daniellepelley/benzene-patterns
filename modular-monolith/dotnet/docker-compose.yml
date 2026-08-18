@@ -1,0 +1,21 @@
+name: benzene-patterns-modular-monolith
+
+# PHASE 0 - one deliverable.
+#
+# Orders, Billing and Shipping in a single process, addressing each other by topic through
+# in-process routes. One container, one deploy, one rollback.
+#
+#   docker compose up --build
+#   curl -X POST http://localhost:9080/orders -H 'content-type: application/json' \
+#     -d '{"customer":"alice","sku":"WIDGET","quantity":2,"unitPrice":9.99}'
+#
+# Then run docker-compose.extracted.yml and send the SAME request to port 9081. The module code is
+# byte-identical between the two; only the routing table differs.
+services:
+  monolith:
+    build:
+      context: .
+      dockerfile: Monolith/Dockerfile
+    image: benzene-patterns-modular-monolith:compose
+    ports:
+      - "9080:8080"

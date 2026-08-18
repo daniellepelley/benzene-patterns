@@ -1,0 +1,170 @@
+name: Smoke - Modular Monolith (.NET)
+
+# The pattern's central claim, asserted rather than described: the SAME module code, deployed as one
+# process and as three, answers identically. This job stands both stacks up and runs the same
+# requests through each.
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'modular-monolith/dotnet/**'
+      - '.github/workflows/smoke-modular-monolith-dotnet.yml'
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'modular-monolith/dotnet/**'
+      - '.github/workflows/smoke-modular-monolith-dotnet.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  MONOLITH: modular-monolith/dotnet/docker-compose.yml
+  EXTRACTED: modular-monolith/dotnet/docker-compose.extracted.yml
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: The module code is identical in both deployments
+        # Asserted before anything runs, because it is the claim everything else rests on. If a
+        # future change makes a module aware of its host, this fails here with a clear reason rather
+        # than quietly weakening the example.
+        run: |
+          set -euo pipefail
+          cd modular-monolith/dotnet
+          fail=0
+
+          # 1. No module may reference an OUTBOUND TRANSPORT or a host. A module that named its own
+          #    transport could not be re-hosted, which is the property this example exists to show.
+          #
+          #    Benzene.Http on the Orders module is deliberately NOT banned: [HttpEndpoint] declares
+          #    that module's own public API, which is an edge concern and identical in both
+          #    deployments. The rules are about MODULE-TO-MODULE calls, and none of those name a
+          #    transport. Banning the inbound attribute too would be a tidier-looking check that
+          #    tested something the pattern does not claim.
+          for f in $(git ls-files 'Modules/*.cs' 'Modules/*.csproj' 'Contracts/*.cs' 'Contracts/*.csproj'); do
+            if grep -n 'Benzene\.Clients\.InProcess\|Benzene\.AspNet\|Microsoft\.AspNetCore\|Benzene\.Clients\.Aws\|Benzene\.Clients\.Azure' "$f"; then
+              echo "::error file=$f::a module or contract named a transport or a host - the seam has leaked"
+              fail=1
+            fi
+          done
+
+          # 2. No module references another module's code (rule 1). Contracts is the one exception,
+          #    and it holds nothing but topic strings and DTOs.
+          for a in Billing Shipping Orders; do
+            for b in Billing Shipping Orders; do
+              [ "$a" = "$b" ] && continue
+              if git grep -n "Modules\.$b" -- "Modules/$a" ; then
+                echo "::error::module $a references module $b - rule 1 broken"
+                fail=1
+              fi
+            done
+          done
+
+          [ "$fail" = "0" ] || exit 1
+          echo "modules reference only Contracts and the message-handler core"
+
+      - name: Compose up (build) - both stacks
+        run: |
+          for attempt in 1 2 3; do
+            if docker compose -f "$MONOLITH" up -d --build \
+               && docker compose -f "$EXTRACTED" up -d --build; then
+              exit 0
+            fi
+            echo "::warning::compose build failed (attempt $attempt/3); retrying in 30s"
+            docker compose -f "$MONOLITH" down -v || true
+            docker compose -f "$EXTRACTED" down -v || true
+            sleep 30
+          done
+          echo "::error::compose build failed after 3 attempts"
+          exit 1
+
+      - name: Wait for both stacks
+        run: |
+          for url in http://localhost:9080/orders http://localhost:9081/orders; do
+            ok=0
+            for i in $(seq 1 30); do
+              status=$(curl -s -o /dev/null -w '%{http_code}' "$url" || true)
+              if [ "$status" != "000" ]; then ok=1; break; fi
+              sleep 2
+            done
+            [ "$ok" = "1" ] || { echo "::error::$url never came up"; exit 1; }
+          done
+
+      - name: The same order gets the same answer from both
+        run: |
+          set -euo pipefail
+          order='{"customer":"alice","sku":"WIDGET","quantity":2,"unitPrice":9.99}'
+
+          curl -fsS -X POST http://localhost:9080/orders -H 'content-type: application/json' \
+            -d "$order" -o mono.json
+          curl -fsS -X POST http://localhost:9081/orders -H 'content-type: application/json' \
+            -d "$order" -o extracted.json
+          echo "--- monolith ---";  cat mono.json
+          echo "--- extracted ---"; cat extracted.json
+
+          # `deployment` is expected to differ - it is the label proving which stack answered - and
+          # the ids are random per order. Everything the DOMAIN produced must match exactly.
+          jq -e '.deployment == "monolith"'  mono.json      >/dev/null || { echo "::error::wrong stack"; exit 1; }
+          jq -e '.deployment == "extracted"' extracted.json >/dev/null || { echo "::error::wrong stack"; exit 1; }
+
+          for f in mono.json extracted.json; do
+            jq -e '.amount == 19.98 and .remainingStock == 98' "$f" >/dev/null \
+              || { echo "::error::$f: domain result differs"; exit 1; }
+            jq -e '(.orderId | startswith("ord-")) and (.chargeId | startswith("chg-"))
+                   and (.reservationId | startswith("rsv-"))' "$f" >/dev/null \
+              || { echo "::error::$f: missing an id from a cross-module call"; exit 1; }
+          done
+
+      - name: Every failure status crosses the boundary the same way
+        # The pattern's "failure is in the signature" claim. Each of these is a DIFFERENT status
+        # produced by a different module, and the caller must receive the same one whether that
+        # module is a function call away or a network away.
+        run: |
+          set -euo pipefail
+          check() {
+            local body="$1" expected="$2" label="$3"
+            for port in 9080 9081; do
+              code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "http://localhost:$port/orders" \
+                -H 'content-type: application/json' -d "$body")
+              [ "$code" = "$expected" ] || {
+                echo "::error::$label on port $port: expected $expected, got $code"; exit 1; }
+            done
+            echo "  ok  $label -> $expected from both stacks"
+          }
+          check '{"customer":"nobody","sku":"WIDGET","quantity":1,"unitPrice":5}'   404 "unknown customer (billing not-found)"
+          check '{"customer":"alice","sku":"NOSUCH","quantity":1,"unitPrice":5}'    404 "unknown sku (shipping not-found)"
+          check '{"customer":"alice","sku":"SPROCKET","quantity":1,"unitPrice":5}'  409 "no stock (shipping conflict)"
+          check '{"customer":"alice","sku":"WIDGET","quantity":0,"unitPrice":5}'    422 "bad quantity (orders validation)"
+
+      - name: The compensation ran in both stacks
+        # A failed reservation after a successful charge must refund, in one process and in three.
+        # There is no shared transaction to roll back in either case - by rule in the monolith, by
+        # physics once extracted - which is why this is a saga and not a rollback.
+        run: |
+          set -euo pipefail
+          for pair in "$MONOLITH monolith" "$EXTRACTED orders"; do
+            set -- $pair
+            if ! docker compose -f "$1" logs "$2" 2>&1 | grep -q "refunding charge"; then
+              echo "::error::no compensation logged in $2"
+              docker compose -f "$1" logs "$2" || true
+              exit 1
+            fi
+          done
+          echo "compensation ran in both deployments"
+
+      - name: Dump logs on failure
+        if: failure()
+        run: |
+          docker compose -f "$MONOLITH" logs || true
+          docker compose -f "$EXTRACTED" logs || true
+
+      - name: Compose down
+        if: always()
+        run: |
+          docker compose -f "$MONOLITH" down -v || true
+          docker compose -f "$EXTRACTED" down -v || true
