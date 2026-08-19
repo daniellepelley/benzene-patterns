@@ -6,5 +6,6 @@ RUN dotnet publish OrdersService/Benzene.Patterns.TransactionalOutbox.OrdersServ
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
 COPY --from=build /app .
+ENV PORT=8080
 EXPOSE 8080
 ENTRYPOINT ["dotnet", "Benzene.Patterns.TransactionalOutbox.OrdersService.dll"]

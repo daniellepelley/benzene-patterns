@@ -61,10 +61,13 @@ public class StartUp : BenzeneStartUp
     /// minimal APIs to serve. This ledger has none: every route it answers is a Benzene handler, so
     /// ASP.NET is purely the HTTP host and belongs inside the worker.
     /// </para>
-    /// <c>UseAspNet</c>'s optional second argument is the port knob: it binds
-    /// <c>http://0.0.0.0:8080</c> by default, and <c>options =&gt; options.Urls = …</c> overrides that.
+    /// <c>UseAspNet</c> binds <c>http://0.0.0.0:8080</c> by default; the <c>options</c> argument
+    /// overrides it. This service reads <c>PORT</c> — the variable Cloud Run and Heroku inject, and
+    /// the one you need to run two of these on one machine without Docker.
     /// </remarks>
     public override void Configure(IBenzeneApplicationBuilder app, IConfiguration configuration)
         => app.UseWorker(worker => worker
-            .UseAspNet(http => http.UseMessageHandlers()));
+            .UseAspNet(
+                http => http.UseMessageHandlers(),
+                options => options.Urls = $"http://0.0.0.0:{configuration["PORT"] ?? "8080"}"));
 }

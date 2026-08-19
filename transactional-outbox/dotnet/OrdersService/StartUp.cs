@@ -46,10 +46,13 @@ public class StartUp : BenzeneStartUp
     /// <c>UseAspNet</c> runs Kestrel as a Benzene worker, the same way <c>UseSqs</c> or
     /// <c>UseRabbitMq</c> run their consumers, so the entry point contains no ASP.NET at all — only
     /// the table provisioning this service does before it starts serving.
-    /// <c>UseAspNet</c>'s optional second argument is the port knob: it binds
-    /// <c>http://0.0.0.0:8080</c> by default, and <c>options =&gt; options.Urls = …</c> overrides that.
+    /// <c>UseAspNet</c> binds <c>http://0.0.0.0:8080</c> by default; the <c>options</c> argument
+    /// overrides it. This service reads <c>PORT</c> — the variable Cloud Run and Heroku inject, and
+    /// the one you need to run two of these on one machine without Docker.
     /// </remarks>
     public override void Configure(IBenzeneApplicationBuilder app, IConfiguration configuration)
         => app.UseWorker(worker => worker
-            .UseAspNet(http => http.UseMessageHandlers()));
+            .UseAspNet(
+                http => http.UseMessageHandlers(),
+                options => options.Urls = $"http://0.0.0.0:{configuration["PORT"] ?? "8080"}"));
 }
