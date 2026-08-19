@@ -12,7 +12,9 @@
          this example (the fold, snapshots, point-in-time, upcasting) is app code, which is the point
          the pattern doc makes and this example demonstrates. -->
     <PackageReference Include="Benzene.EventSourcing" />
+    <PackageReference Include="Benzene.HostedService" />
     <PackageReference Include="Benzene.Http" />
     <PackageReference Include="Benzene.Microsoft.Dependencies" />
+    <PackageReference Include="Benzene.SelfHost" />
   </ItemGroup>
 </Project>

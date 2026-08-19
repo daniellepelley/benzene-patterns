@@ -13,7 +13,9 @@
          local. -->
     <PackageReference Include="Benzene.Core.Middleware" />
     <PackageReference Include="Benzene.Core.MessageHandlers" />
+    <PackageReference Include="Benzene.HostedService" />
     <PackageReference Include="Benzene.Http" />
     <PackageReference Include="Benzene.Microsoft.Dependencies" />
+    <PackageReference Include="Benzene.SelfHost" />
   </ItemGroup>
 </Project>

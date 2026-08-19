@@ -18,9 +18,11 @@
     <PackageVersion Include="Benzene.Core.MessageHandlers" Version="[0.0.2-alpha.6]" />
     <PackageVersion Include="Benzene.Core.Messages" Version="[0.0.2-alpha.6]" />
     <PackageVersion Include="Benzene.Core.Middleware" Version="[0.0.2-alpha.6]" />
+    <PackageVersion Include="Benzene.HostedService" Version="[0.0.2-alpha.6]" />
     <PackageVersion Include="Benzene.Http" Version="[0.0.2-alpha.6]" />
     <PackageVersion Include="Benzene.Microsoft.Dependencies" Version="[0.0.2-alpha.6]" />
     <PackageVersion Include="Benzene.Results" Version="[0.0.2-alpha.6]" />
+    <PackageVersion Include="Benzene.SelfHost" Version="[0.0.2-alpha.6]" />
   </ItemGroup>
 
 </Project>

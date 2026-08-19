@@ -145,6 +145,38 @@ dotnet/Ledger/
   StartUp.cs        one line of Benzene event sourcing, and the app code around it
 ```
 
+## Where the hosting lives
+
+`Program.cs` is the plain generic host, and contains no ASP.NET at all:
+
+```csharp
+var host = Host.CreateDefaultBuilder(args)
+    .UseBenzene<StartUp>()
+    .Build();
+
+await host.RunAsync();
+```
+
+HTTP is declared in `StartUp.Configure`, with every other transport this service might grow:
+
+```csharp
+app.UseWorker(worker => worker
+    .UseAspNet(
+        http => http.UseMessageHandlers(),
+        options => options.Urls = $"http://0.0.0.0:{configuration["PORT"] ?? "8080"}"));
+```
+
+`UseAspNet` runs Kestrel **as a Benzene worker**, exactly the way `UseSqs` or `UseRabbitMq` run their
+consumers. So adding a queue consumer to this ledger later is another line in that method, and the
+program's shape does not change.
+
+The other shape — `WebApplicationBuilder.UseBenzene<StartUp>()` in `Program.cs`, `app.UseBenzene()`
+after `Build()`, and `app.UseHttp(...)` in the startup — is for **embedding** Benzene inside a larger
+ASP.NET application that has its own controllers or minimal APIs to serve. This ledger has none:
+every route it answers is a Benzene handler, so ASP.NET is purely the HTTP host and belongs inside
+the worker. (The [choreography](../choreography/README.md) reactions are the other case — they
+genuinely do have a minimal-API endpoint of their own, so they use the embedded shape.)
+
 ## The line between framework and application
 
 `StartUp.cs` has one event-sourcing registration:
