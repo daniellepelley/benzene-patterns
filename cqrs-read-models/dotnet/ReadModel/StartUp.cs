@@ -87,6 +87,10 @@ public class StartUp : BenzeneStartUp
         var lagMs = int.TryParse(configuration["PROJECTION_DELAY_MS"], out var lag) ? lag : 0;
 
         app.UseWorker(worker => worker
+            // DELIBERATE DEMONSTRATION of UseAspNet's optional second argument. It is the only place
+            // in this repo that passes it, because the default it overrides is already
+            // http://0.0.0.0:8080 - every other service here omits the argument entirely and gets the
+            // same binding. Kept in one place so the knob is discoverable rather than folklore.
             .UseAspNet(
                 asp => asp.UseMessageHandlers(),
                 options => options.Urls = $"http://0.0.0.0:{configuration["PORT"] ?? "8080"}")

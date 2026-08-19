@@ -6,6 +6,5 @@ RUN dotnet publish Ledger/Benzene.Patterns.EventSourcing.Ledger.csproj -c Releas
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
 COPY --from=build /app .
-ENV PORT=8080
 EXPOSE 8080
 ENTRYPOINT ["dotnet", "Benzene.Patterns.EventSourcing.Ledger.dll"]

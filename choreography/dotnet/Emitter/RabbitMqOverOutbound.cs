@@ -14,8 +14,8 @@ namespace Benzene.Patterns.Choreography.Emitter;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Another framework gap, and a different one from the HTTP adapter three other examples here
-/// carry.</b> <c>Benzene.RabbitMq</c> ships the whole outbound path — a context converter, a publish
+/// <b>Another framework gap, and the same shape as the one five other files in this repo hand-fill
+/// for HTTP.</b> <c>Benzene.RabbitMq</c> ships the whole outbound path — a context converter, a publish
 /// middleware, and a <c>UseRabbitMq&lt;T&gt;()</c> extension — but that extension is written against
 /// the older <c>IBenzeneClientContext&lt;T, Void&gt;</c> shape, and the outbound routing table's
 /// pipelines are <c>IMiddlewarePipelineBuilder&lt;OutboundContext&gt;</c>. Every cloud transport has

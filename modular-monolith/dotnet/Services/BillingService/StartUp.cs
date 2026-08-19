@@ -42,12 +42,11 @@ public class StartUp : BenzeneStartUp
     /// ASP.NET at all. The embedded alternative — <c>WebApplicationBuilder.UseBenzene&lt;StartUp&gt;()</c>
     /// plus <c>app.UseBenzene()</c> — is for putting Benzene inside a LARGER ASP.NET application that
     /// has its own controllers or minimal APIs. This service has none.
+    /// <c>UseAspNet</c>'s optional second argument is the port knob: it binds
+    /// <c>http://0.0.0.0:8080</c> by default, and <c>options =&gt; options.Urls = …</c> overrides that.
     /// </remarks>
     public override void Configure(IBenzeneApplicationBuilder app, IConfiguration configuration)
         => app.UseWorker(worker => worker
-            .UseAspNet(
-                http => http
-            .UseBenzeneMessage(message => message
-                .UseMessageHandlers()),
-                options => options.Urls = $"http://0.0.0.0:{configuration["PORT"] ?? "8080"}"));
+            .UseAspNet(http => http
+                .UseBenzeneMessage(message => message.UseMessageHandlers())));
 }

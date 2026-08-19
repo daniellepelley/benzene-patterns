@@ -1,11 +1,10 @@
 using Benzene.HostedService;
 using Benzene.Patterns.EventSourcing.Ledger;
-using Microsoft.Extensions.Hosting;
 
-// The plain generic host - nothing ASP.NET-shaped here. StartUp declares HTTP as a transport
-// alongside any other it might grow, so this file does not change when that happens.
-var host = Host.CreateDefaultBuilder(args)
-    .UseBenzene<StartUp>()
-    .Build();
-
-await host.RunAsync();
+// The whole entry point. StartUp declares HTTP as a transport alongside any other this service might
+// grow, so this file does not change when that happens.
+//
+// BenzeneHost.RunAsync is exactly Host.CreateDefaultBuilder(args).UseBenzene<StartUp>().Build()
+// .RunAsync() - the explicit form is one rung down and stays available; take it (or BenzeneHost.Build,
+// as transactional-outbox/OrdersService does) the moment you need the IHost in hand.
+await BenzeneHost.RunAsync<StartUp>(args);

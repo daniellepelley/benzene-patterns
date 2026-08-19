@@ -21,8 +21,11 @@ namespace Benzene.Patterns.Cqrs.Write.TenantService;
 /// both overloads (SQS, SNS, EventBridge, Service Bus, Event Grid, Event Hub, Queue Storage,
 /// Pub/Sub, in-process); RabbitMQ, Kafka and HTTP have only the older one. So a route cannot reach
 /// RabbitMQ without this file. Two write services here each need one, which takes this repo's count
-/// of hand-rolled outbound adapters to seven across five patterns — the argument for closing the gap
-/// upstream, not for getting better at copying the file.
+/// of hand-rolled outbound adapters to EIGHT across six of its eight patterns — the argument for
+/// closing the gap upstream, not for getting better at copying the file. The template already
+/// exists: <c>Benzene.Clients.Aws.Sqs</c>'s <c>UseSqs(OutboundContext)</c> is an
+/// <c>IContextConverter&lt;OutboundContext, SqsSendMessageContext&gt;</c> handed to
+/// <c>Convert(...)</c>, and SNS and EventBridge ship the same pair.
 /// </para>
 /// <para>
 /// The wire format is deliberately identical to what <c>RabbitMqContextConverter</c> produces, so a

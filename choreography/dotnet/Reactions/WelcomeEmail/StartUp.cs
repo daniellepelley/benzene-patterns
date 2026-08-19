@@ -90,11 +90,15 @@ public class StartUp : BenzeneStartUp
                 .UseW3CTraceContext()
                 .Use("RestoreCorrelationId", async (IServiceResolver resolver, RabbitMqContext context, Func<Task> next) =>
                 {
-                    // Six lines that Benzene does not ship a counterpart for. Benzene.Clients stamps
-                    // the correlation id on the way OUT (UseCorrelationId), and the inbound side reads
-                    // it onto the diagnostics span - but nothing puts it back into ICorrelationId, so
-                    // without this a reaction's own correlation id is a fresh Guid and the chain is
-                    // broken exactly where a reader would look for it.
+                    // Six lines that Benzene does not ship a counterpart for, written out FOUR TIMES
+                    // in this example - once per reaction. Benzene.Clients stamps the correlation id
+                    // on the way OUT (Benzene.Clients.CorrelationId.UseCorrelationId, on
+                    // OutboundContext), and the inbound side reads it onto the diagnostics span - but
+                    // Benzene.Diagnostics.Correlation ships only AddCorrelationId(), which registers a
+                    // scoped ICorrelationId holding a fresh Guid. Nothing puts the RECEIVED id back
+                    // into it, so without this a reaction's own correlation id is that fresh Guid and
+                    // the chain breaks exactly where a reader would look for it. Half a convention:
+                    // the producer side has its steer, the consumer side has none.
                     var headers = resolver.GetService<IMessageHeadersGetter<RabbitMqContext>>()
                         .GetHeaders(context);
                     if (headers.TryGetValue(WireHeaders.CorrelationId, out var correlationId))

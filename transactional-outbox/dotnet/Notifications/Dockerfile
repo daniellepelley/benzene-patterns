@@ -6,6 +6,5 @@ RUN dotnet publish Notifications/Benzene.Patterns.TransactionalOutbox.Notificati
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
 COPY --from=build /app .
-ENV PORT=8080
 EXPOSE 8080
 ENTRYPOINT ["dotnet", "Benzene.Patterns.TransactionalOutbox.Notifications.dll"]

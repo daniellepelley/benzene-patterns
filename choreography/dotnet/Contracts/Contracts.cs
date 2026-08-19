@@ -15,11 +15,13 @@ public static class WireHeaders
     /// The correlation-id header key, named explicitly on both sides rather than left to a default.
     /// </summary>
     /// <remarks>
-    /// <c>docs/specification/wire-contracts.md</c> §1.1 uses <c>x-correlation-id</c>, and the pinned
-    /// Benzene.Clients (0.0.2-alpha.4) still defaults its outbound stamping middleware to
-    /// <c>correlationId</c> — a mismatch later releases close with a shared
-    /// <c>CorrelationHeaderDefaults</c>. Naming the key at both ends is the version-independent fix
-    /// and, in a real estate, the right habit anyway: the key is part of the wire contract.
+    /// <c>docs/specification/wire-contracts.md</c> §1.1 uses <c>x-correlation-id</c>, and as of the
+    /// pinned Benzene.Clients (0.0.3-alpha.1) so does <c>UseCorrelationId()</c> — its default is
+    /// <c>x-correlation-id</c>, overridable process-wide via <c>CorrelationHeaderOptions.HeaderKey</c>.
+    /// The mismatch an earlier alpha had is closed, so the argument passed at each call site is now
+    /// belt-and-braces rather than a workaround. It stays because naming the key at both ends is the
+    /// right habit in a real estate: the key is part of the wire contract, and here one emitter and
+    /// four independently-deployed reactions have to agree on it.
     /// </remarks>
     public const string CorrelationId = "x-correlation-id";
 }

@@ -22,9 +22,12 @@ namespace Benzene.Patterns.TwoTier.Orchestrator;
 /// <c>IBenzeneMessageClient</c> and there is no <c>UseBenzeneMessageOverHttp()</c> extension on
 /// <c>OutboundContext</c> to bind it into a route — so a route cannot reach it without this adapter.
 /// That gap is the only reason this file exists; it is a note for the framework, not a design choice
-/// of the example. <b>Four independent patterns in this repo have now needed it</b> — the
-/// real-time-risk map-reduce coordinator and the modular-monolith extraction carry the same ~50
-/// lines — which is the strongest argument for closing it upstream and deleting all four copies.
+/// of the example. <b>Counted across this repo, this gap has been hand-filled eight times</b> — five
+/// copies of this HTTP adapter (two-tier orchestrator, modular-monolith extraction,
+/// transactional-outbox orders service AND relay, real-time-risk map-reduce coordinator) and three of
+/// its RabbitMQ twin (choreography emitter, both CQRS write services): six of the eight patterns,
+/// ~750 lines, differing only in namespace. That count is the argument for closing it upstream and
+/// deleting every copy.
 /// </para>
 /// <para>
 /// It uses a documented seam rather than a private one: <c>DefaultBenzeneMessageSender</c> explicitly
@@ -66,9 +69,11 @@ public class BenzeneMessageOverHttpMiddleware : IMiddleware<OutboundContext>, IT
         // Benzene status onto the HTTP status as well as carrying it in the envelope, so a 404 for a
         // NotFound is a normal RESULT and must be read from the body - only a missing or unparseable
         // envelope is genuinely a transport problem.
-        // The pinned Benzene.Clients (0.0.2-alpha.4) has no `isSuccessful` parameter on this type, so
-        // the sender classifies the status code against the known vocabulary instead. That is the
-        // documented fallback and it is exact for the statuses this worker returns.
+        // The optional `isSuccessful` argument is left unset on purpose. Benzene.Clients 0.0.3-alpha.1
+        // does carry it, and AsBenzeneResult reads it as `source.IsSuccessful ?? IsSuccessStatus(status)`
+        // - so omitting it takes the documented fallback, which classifies the status against the known
+        // vocabulary and is exact for every status this worker returns. Set it only for a transport
+        // that knows something the status string does not.
         context.Response = payload is null
             ? new BenzeneMessageClientResponse("service-unavailable", string.Empty)
             : new BenzeneMessageClientResponse(payload.StatusCode, payload.Body ?? string.Empty, payload.Headers);
