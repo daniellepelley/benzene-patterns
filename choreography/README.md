@@ -164,23 +164,42 @@ The emitter returns the correlation id it used; CI asserts the identical id turn
 journals. A reaction whose span has no remote parent is a reaction the fleet view cannot connect to
 the event that caused it — so this is the cheap, checkable form of the mesh claim.
 
-## Two framework gaps this needed
+## Two framework gaps this closed
 
-Neither is a design choice of the example.
+Neither was a design choice of the example, and **0.0.3-alpha.2 shipped both fixes**.
 
-**1. RabbitMQ has no `OutboundContext` overload.** `Benzene.RabbitMq` ships the whole outbound path —
-a context converter, a publish middleware, a `UseRabbitMq<T>()` extension — but that extension is
+**1. RabbitMQ had no `OutboundContext` overload.** `Benzene.RabbitMq` shipped the whole outbound path
+— a context converter, a publish middleware, a `UseRabbitMq<T>()` extension — but that extension was
 written against the older `IBenzeneClientContext<T, Void>` shape, while the outbound routing table's
-pipelines are `IMiddlewarePipelineBuilder<OutboundContext>`. Every cloud transport has **both**
+pipelines are `IMiddlewarePipelineBuilder<OutboundContext>`. Every cloud transport had **both**
 overloads (SQS, SNS, EventBridge, Service Bus, Event Grid, Event Hub, Queue Storage, Pub/Sub,
-in-process); RabbitMQ, Kafka and HTTP have only the older one. `Emitter/RabbitMqOverOutbound.cs` is
-the missing overload, written out. It is a smaller fix upstream than it looks.
+in-process); RabbitMQ, Kafka and HTTP had only the older one. `Emitter/RabbitMqOverOutbound.cs` was
+that missing overload written out; the overload now ships and the file is gone, along with its two
+copies in the CQRS example. The emitter's whole route is:
 
-**2. Nothing restores the correlation id inbound.** `Benzene.Clients` stamps it on the way out, and
-the diagnostics decorator reads it onto the inbound span — but nothing puts it back into
-`ICorrelationId`, so a consumer's own correlation id is a fresh Guid and the chain breaks exactly
-where a reader would look for it. Each reaction carries six lines of pipeline to do it. An inbound
-`UseCorrelationId()` counterpart would delete all four copies.
+```csharp
+.Route(Topics.TenantCreated, pipeline => pipeline
+    .UseCorrelationId(WireHeaders.CorrelationId)
+    .UseW3CTraceContext()
+    .UseRabbitMq(channel, Broker.Exchange))
+```
+
+**2. Nothing restored the correlation id inbound.** `Benzene.Clients` stamped it on the way out, and
+the diagnostics decorator read it onto the inbound span — but nothing put it back into
+`ICorrelationId`, so a consumer's own correlation id was a fresh Guid and the chain broke exactly
+where a reader would look for it. Each reaction carried six lines of pipeline to do it, four times
+over. `Benzene.Diagnostics` now ships the inbound counterpart, and all four copies are one line:
+
+```csharp
+.UseW3CTraceContext()
+.UseCorrelationId(WireHeaders.CorrelationId)
+.UseIdempotency()
+.UseMessageHandlers()
+```
+
+It is transport-agnostic in the same way `UseW3CTraceContext` is — it resolves the
+`IMessageHeadersGetter<TContext>` for whatever context the pipeline carries — so the same line works
+on a Kafka or SQS reaction unchanged.
 
 A third, smaller one: the pattern doc's handler snippet shows `IMessageHandler<TenantCreated>`
 returning `Task<IBenzeneResult>`. The shipped single-generic `IMessageHandler<TRequest>` returns

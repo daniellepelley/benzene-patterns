@@ -162,15 +162,30 @@ though the process depends entirely on it.
   are Lambda-to-Lambda invokes. Only `Orchestrator/StartUp.cs` knows the difference — six routes in
   one file — which is the practical form of rule 5.
 
-## The framework gap this needed, again
+## The framework gap this closed
 
-`Orchestrator/BenzeneMessageOverHttp.cs` is the ~50-line outbound middleware that POSTs the
-BenzeneMessage envelope to another service's `/benzene-message` endpoint.
+The orchestrator used to carry `Orchestrator/BenzeneMessageOverHttp.cs` — a ~50-line outbound
+middleware that POSTed the BenzeneMessage envelope to another service's BenzeneMessage endpoint. It
+was the **fifth** copy of that file in this repo, across four independent patterns.
 
-This is the **fifth** copy of that file in this repo, across four independent patterns — the
-real-time-risk coordinator, the modular monolith's extracted Orders service, both halves of the
-transactional outbox, and now this orchestrator. `Benzene.Clients.Http` already ships
-`HttpBenzeneMessageClient`, but it is registered as an `IBenzeneMessageClient` and there is no
-`UseBenzeneMessageOverHttp()` extension on `OutboundContext` to bind it into a route, the way
-`UseSqs`/`UseServiceBus`/`UseInProcess` do. Four independent patterns needing the same adapter is about as clear an
-argument for closing the gap upstream as this repo can produce.
+`Benzene.Clients.Http` shipped `HttpBenzeneMessageClient` but registered it only as an
+`IBenzeneMessageClient`, with no `UseBenzeneMessageOverHttp()` on `OutboundContext` to bind it into a
+route the way `UseSqs`/`UseServiceBus`/`UseInProcess` do. Four independent patterns needing the same
+adapter was the argument, and **0.0.3-alpha.2 closed it**. All five copies are deleted, and the
+routing table is now six lines of pure intent:
+
+```csharp
+.AddOutboundRouting(routing => routing
+    .Route(Topics.TenantCreate,    p => p.UseBenzeneMessageOverHttp(tenant))
+    .Route(Topics.TenantDelete,    p => p.UseBenzeneMessageOverHttp(tenant))
+    .Route(Topics.UserCreate,      p => p.UseBenzeneMessageOverHttp(user))
+    .Route(Topics.UserDelete,      p => p.UseBenzeneMessageOverHttp(user))
+    .Route(Topics.BillingSetup,    p => p.UseBenzeneMessageOverHttp(billing))
+    .Route(Topics.BillingTeardown, p => p.UseBenzeneMessageOverHttp(billing)))
+```
+
+The shipped extension is one rung of shorthand over
+`UseBenzeneMessageOverHttp(url, builder => builder.UseHttpClient())`, which is itself
+`Convert(new OutboundBenzeneMessageHttpContextConverter(url), action)` — every rung public, so you can
+drop a level to supply your own `HttpClient` or `ISerializer`. It also registers a non-destructive
+reachability health check for each URL, which the hand-rolled adapter never did.

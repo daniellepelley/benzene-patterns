@@ -7,6 +7,7 @@ using Benzene.Core.MessageHandlers;
 using Benzene.Core.MessageHandlers.DI;
 using Benzene.Diagnostics.Correlation;
 using Benzene.Microsoft.Dependencies;
+using Benzene.RabbitMq.RabbitMqSendMessage;
 using Benzene.SelfHost;
 using Benzene.Patterns.Choreography.Contracts;
 using Microsoft.Extensions.Configuration;
@@ -49,7 +50,8 @@ public class StartUp : BenzeneStartUp
         // Blocking once at start-up, on purpose: the channel is a singleton shared by every send, and
         // a service that cannot reach its broker has nothing useful to do. The retry loop inside is
         // what makes this safe under compose.
-        services.AddSingleton(_ => Broker.ConnectAsync(host, port, user, password).GetAwaiter().GetResult());
+        var channel = Broker.ConnectAsync(host, port, user, password).GetAwaiter().GetResult();
+        services.AddSingleton(channel);
 
         services.AddSingleton<TenantStore>();
 
@@ -63,7 +65,7 @@ public class StartUp : BenzeneStartUp
                 .Route(Topics.TenantCreated, pipeline => pipeline
                     .UseCorrelationId(WireHeaders.CorrelationId)
                     .UseW3CTraceContext()
-                    .UseRabbitMqExchange(Broker.Exchange))));
+                    .UseRabbitMq(channel, Broker.Exchange))));
     }
 
     /// <summary>

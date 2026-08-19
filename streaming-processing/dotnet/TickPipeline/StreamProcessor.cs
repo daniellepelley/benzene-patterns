@@ -136,9 +136,10 @@ public class StreamProcessor
     {
         var builder = new MiddlewarePipelineBuilder<StreamContext<Tick>>(container);
 
-        // UseTerminalStream, not the shipped UseStream - see TerminalStream.cs for the one-word
-        // framework fix it stands in for. The step's body is exactly what UseStream would run.
-        builder.UseTerminalStream<Tick>(async (context) =>
+        // The shipped UseStream, which is terminal (ITerminalMiddleware) as of 0.0.3-alpha.2. This
+        // example carried a local copy built on UseTerminal until that one-word fix landed; the
+        // start-up check is what found it, by refusing to boot a pipeline with no terminal step.
+        builder.UseStream<Tick>(async (context) =>
         {
             var run = (RunState)context.Metadata["run"];
             var o = run.Options;

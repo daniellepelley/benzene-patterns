@@ -1,6 +1,7 @@
 using Amazon.DynamoDBv2;
 using Benzene.AspNet.Core;
 using Benzene.Clients;
+using Benzene.Clients.Http;
 using Benzene.Core.MessageHandlers.DI;
 using Benzene.Microsoft.Dependencies;
 using Benzene.Patterns.TransactionalOutbox.Contracts;

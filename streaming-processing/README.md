@@ -131,7 +131,6 @@ dotnet/TickPipeline/
   Shard.cs             a local stand-in for one Kinesis shard: ordered, sequence-addressed, checkpointed
   Bars.cs              the OHLC bars, the idempotent fold, and the naive one kept runnable
   StreamProcessor.cs   builds the Benzene stream pipeline and runs one batch through it
-  TerminalStream.cs    a three-line framework fix, written up below
   Handlers.cs          publish ticks, drain a batch, inspect bars and the shard, rig a failure
 ```
 
@@ -152,23 +151,26 @@ at a time, which is the only way to show "resume from the failure" as something 
 `POST /poison` is the other demo affordance. At-least-once redelivery is the condition under which a
 rolling aggregation is either right or quietly wrong, and it is not something you can wait for.
 
-## A three-line framework finding
+## A one-word framework finding
 
 `StreamExtensions.UseStream` is documented as *"a terminal stream-processing step"* — and it is,
-nothing runs after it. But it is built on the ordinary `Use(name, func)` rather than
-`UseTerminal(name, func)`, so it is not marked `ITerminalMiddleware`, and Benzene's own start-up
-check then refuses to boot a pipeline that ends in it:
+nothing runs after it. But it was built on the ordinary `Use(name, func)` rather than
+`UseTerminal(name, func)`, so it was not marked `ITerminalMiddleware`, and Benzene's own start-up
+check refused to boot a pipeline that ended in it:
 
 ```
 terminal-middleware: 1 pipeline(s) cannot handle a message:
   the StreamContext`1 pipeline has no terminal middleware
 ```
 
-That is the check doing exactly its job, on a false positive. `TerminalStream.cs` is the same step
-built on `UseTerminal`, which is all the upstream fix would be. Worth noting how it was found: not by
-reading the source, but by the start-up check failing on the first run and naming both the pipeline
-and the missing piece — the same check that caught a missing terminal middleware in three other
-examples in this repo.
+That was the check doing exactly its job, on a false positive. This example carried a local
+`TerminalStream.cs` — the same step built on `UseTerminal` — until **0.0.3-alpha.2 made that one-word
+change upstream**; the shipped `UseStream` is now what this pipeline calls, and the local copy is
+deleted.
+
+Worth noting how it was found: not by reading the source, but by the start-up check failing on the
+first run and naming both the pipeline and the missing piece — the same check that caught a missing
+terminal middleware in three other examples in this repo.
 
 ## Be honest about what this demo isn't
 

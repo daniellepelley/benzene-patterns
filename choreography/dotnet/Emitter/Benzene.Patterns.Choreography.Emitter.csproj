@@ -12,6 +12,7 @@
     <PackageReference Include="Benzene.HostedService" />
     <PackageReference Include="Benzene.Http" />
     <PackageReference Include="Benzene.Microsoft.Dependencies" />
+    <PackageReference Include="Benzene.RabbitMq" />
     <PackageReference Include="Benzene.SelfHost" />
     <PackageReference Include="RabbitMQ.Client" />
   </ItemGroup>

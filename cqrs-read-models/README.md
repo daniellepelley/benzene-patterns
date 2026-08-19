@@ -192,16 +192,27 @@ query side on read volume, which is half the point of CQRS — and nothing but t
 change.
 
 `UseAspNet` needs 0.0.2-alpha.5 or later, which briefly split this repo's pins; every example now
-pins **0.0.3-alpha.1** and uses it.
+pins **0.0.3-alpha.2** and uses it.
 
-## The framework gap, again
+## The framework gap, now closed
 
-Each write service carries a copy of `RabbitMqOverOutbound.cs` — the `OutboundContext` overload
-`Benzene.RabbitMq` does not ship, written out. It is the same gap the
-[choreography example](../choreography/README.md#two-framework-gaps-this-needed) documents, and it is
-still present in 0.0.3-alpha.1. Two more copies here takes this repo to **seven hand-rolled outbound
-adapters across five patterns**, which is an argument for closing the gap upstream rather than for
-getting better at copying the file.
+Each write service used to carry a copy of `RabbitMqOverOutbound.cs` — the `OutboundContext` overload
+`Benzene.RabbitMq` did not ship, written out. It was the same gap the
+[choreography example](../choreography/README.md#two-framework-gaps-this-closed) documents, and two
+more copies here took the repo to **eight hand-rolled outbound adapters across six patterns**. That
+count was the argument, and **0.0.3-alpha.2 ships `UseRabbitMq` on `OutboundContext`**, so every copy
+is deleted. Each write service's publish is now one line:
+
+```csharp
+.Route(Topics.TenantCreated, pipeline => pipeline
+    .UseCorrelationId(WireHeaders.CorrelationId)
+    .UseW3CTraceContext()
+    .UseRabbitMq(channel, Broker.Exchange))
+```
+
+The wire format is unchanged, because the shipped `OutboundRabbitMqContextConverter` does what the
+hand-rolled copy did: topic on the `topic` header *and* the routing key, headers UTF-8 encoded, and an
+`IBenzeneResult<Void>` response rather than a raw envelope with no body to deserialize.
 
 ## Be honest about what this demo isn't
 

@@ -107,20 +107,23 @@ the code was written on day one to survive all three:
 What did **not** change: call sites, message contracts, serialization, failure handling, or any test
 of a module. That is the whole of the claim.
 
-## One thing this needed that the framework doesn't ship
+## One thing this needed, and now gets
 
-`Services/OrdersService/BenzeneMessageOverHttp.cs` is a ~50-line outbound middleware that POSTs the
-BenzeneMessage envelope to another service's `/benzene-message` endpoint.
+The extracted Orders service used to carry `Services/OrdersService/BenzeneMessageOverHttp.cs` — a
+~50-line outbound middleware POSTing the BenzeneMessage envelope to another service's endpoint. Four
+independent patterns in this repo carried the same file, five copies in total.
 
-`Benzene.Clients.Http` already ships `HttpBenzeneMessageClient`, documented as *"the HTTP counterpart
-of the AWS Lambda invoke path"* — but it is registered as an `IBenzeneMessageClient` and there is no
-`UseBenzeneMessageOverHttp()` extension on `OutboundContext` to bind it into a route, the way
-`UseSqs`/`UseServiceBus`/`UseInProcess` do. The adapter uses documented seams only.
+`Benzene.Clients.Http` shipped `HttpBenzeneMessageClient`, documented as *"the HTTP counterpart of the
+AWS Lambda invoke path"* — but with no `UseBenzeneMessageOverHttp()` on `OutboundContext` to bind it
+into a route. **0.0.3-alpha.2 closed the gap** and every copy is deleted. What matters for *this*
+pattern is that the extraction stayed a routing-table edit either way — the three routes below are
+the whole of the difference between in-process and over-the-wire:
 
-**Four independent patterns in this repo have now needed it** — the real-time-risk map-reduce
-coordinator, the transactional outbox, and the two-tier orchestrator all carry the same file, five
-copies in total — which is the argument for closing the gap upstream and deleting every one.
-
+```csharp
+.Route(Topics.BillingCharge,   p => p.UseBenzeneMessageOverHttp(billingUrl))
+.Route(Topics.BillingRefund,   p => p.UseBenzeneMessageOverHttp(billingUrl))
+.Route(Topics.ShippingReserve, p => p.UseBenzeneMessageOverHttp(shippingUrl))
+```
 ## Package pinning
 
 This example uses [central package management](dotnet/Directory.Packages.props) with

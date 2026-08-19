@@ -177,13 +177,13 @@ the partial-failure policy are byte-identical either way, because the scatter go
 `risk-worker` across the replicas, so the coordinator's single routed URL fans out without knowing
 how many there are.
 
-One piece of plumbing is hand-rolled and should not have to be. `Benzene.Clients.Http` ships
-`HttpBenzeneMessageClient`, documented as "the HTTP counterpart of the AWS Lambda invoke path", but it
-is registered as an `IBenzeneMessageClient` and there is no `UseBenzeneMessageOverHttp()` extension on
-`OutboundContext` to bind it into a route, the way `UseSqs`/`UseServiceBus`/`UseInProcess` do. So
-`RiskCoordinator/BenzeneMessageOverHttp.cs` is a ~50-line adapter over documented seams. **That is a
-gap in the framework, noted here rather than papered over** — closing it upstream would delete this
-file.
+One piece of plumbing used to be hand-rolled and should not have had to be. `Benzene.Clients.Http`
+shipped `HttpBenzeneMessageClient`, documented as "the HTTP counterpart of the AWS Lambda invoke
+path", but registered only as an `IBenzeneMessageClient`, with no `UseBenzeneMessageOverHttp()` on
+`OutboundContext` to bind it into a route the way `UseSqs`/`UseServiceBus`/`UseInProcess` do — so
+`RiskCoordinator/BenzeneMessageOverHttp.cs` was a ~50-line adapter over documented seams. **That gap
+was noted here rather than papered over, and 0.0.3-alpha.2 closed it**: the file is deleted and the
+scatter's transport is one line.
 
 ### A deliberate simplification for this local slice
 

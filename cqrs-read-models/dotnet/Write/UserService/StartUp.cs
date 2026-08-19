@@ -7,6 +7,7 @@ using Benzene.Core.MessageHandlers;
 using Benzene.Core.MessageHandlers.DI;
 using Benzene.Diagnostics.Correlation;
 using Benzene.Microsoft.Dependencies;
+using Benzene.RabbitMq.RabbitMqSendMessage;
 using Benzene.SelfHost;
 using Benzene.Patterns.Cqrs.Contracts;
 using Microsoft.Extensions.Configuration;
@@ -35,7 +36,8 @@ public class StartUp : BenzeneStartUp
         var user = configuration["RABBIT_USER"] ?? "guest";
         var password = configuration["RABBIT_PASSWORD"] ?? "guest";
 
-        services.AddSingleton(_ => Broker.ConnectAsync(host, port, user, password).GetAwaiter().GetResult());
+        var channel = Broker.ConnectAsync(host, port, user, password).GetAwaiter().GetResult();
+        services.AddSingleton(channel);
         services.AddSingleton<UserStore>();
         services.AddSingleton<EventLog>();
 
@@ -46,7 +48,7 @@ public class StartUp : BenzeneStartUp
                 .Route(Topics.UserCreated, pipeline => pipeline
                     .UseCorrelationId(WireHeaders.CorrelationId)
                     .UseW3CTraceContext()
-                    .UseRabbitMqExchange(Broker.Exchange))));
+                    .UseRabbitMq(channel, Broker.Exchange))));
     }
 
     /// <summary>

@@ -9,20 +9,20 @@
   <ItemGroup>
     <!-- See TradeLedger's .csproj comment for why every Benzene.* package (direct and transitive) is
          pinned with the [version] exact-match syntax rather than a bare floor. -->
-    <PackageReference Include="Benzene.AspNet.Core" Version="[0.0.3-alpha.1]" />
-    <PackageReference Include="Benzene.Abstractions" Version="[0.0.3-alpha.1]" />
-    <PackageReference Include="Benzene.Abstractions.MessageHandlers" Version="[0.0.3-alpha.1]" />
-    <PackageReference Include="Benzene.Abstractions.Messages" Version="[0.0.3-alpha.1]" />
-    <PackageReference Include="Benzene.Abstractions.Middleware" Version="[0.0.3-alpha.1]" />
-    <PackageReference Include="Benzene.Abstrations.Pipelines" Version="[0.0.3-alpha.1]" />
-    <PackageReference Include="Benzene.CodeGen.SourceGenerators" Version="[0.0.3-alpha.1]" />
-    <PackageReference Include="Benzene.Core" Version="[0.0.3-alpha.1]" />
-    <PackageReference Include="Benzene.Core.MessageHandlers" Version="[0.0.3-alpha.1]" />
-    <PackageReference Include="Benzene.Core.Messages" Version="[0.0.3-alpha.1]" />
-    <PackageReference Include="Benzene.Core.Middleware" Version="[0.0.3-alpha.1]" />
-    <PackageReference Include="Benzene.Http" Version="[0.0.3-alpha.1]" />
-    <PackageReference Include="Benzene.Microsoft.Dependencies" Version="[0.0.3-alpha.1]" />
-    <PackageReference Include="Benzene.Results" Version="[0.0.3-alpha.1]" />
+    <PackageReference Include="Benzene.AspNet.Core" Version="[0.0.3-alpha.2]" />
+    <PackageReference Include="Benzene.Abstractions" Version="[0.0.3-alpha.2]" />
+    <PackageReference Include="Benzene.Abstractions.MessageHandlers" Version="[0.0.3-alpha.2]" />
+    <PackageReference Include="Benzene.Abstractions.Messages" Version="[0.0.3-alpha.2]" />
+    <PackageReference Include="Benzene.Abstractions.Middleware" Version="[0.0.3-alpha.2]" />
+    <PackageReference Include="Benzene.Abstrations.Pipelines" Version="[0.0.3-alpha.2]" />
+    <PackageReference Include="Benzene.CodeGen.SourceGenerators" Version="[0.0.3-alpha.2]" />
+    <PackageReference Include="Benzene.Core" Version="[0.0.3-alpha.2]" />
+    <PackageReference Include="Benzene.Core.MessageHandlers" Version="[0.0.3-alpha.2]" />
+    <PackageReference Include="Benzene.Core.Messages" Version="[0.0.3-alpha.2]" />
+    <PackageReference Include="Benzene.Core.Middleware" Version="[0.0.3-alpha.2]" />
+    <PackageReference Include="Benzene.Http" Version="[0.0.3-alpha.2]" />
+    <PackageReference Include="Benzene.Microsoft.Dependencies" Version="[0.0.3-alpha.2]" />
+    <PackageReference Include="Benzene.Results" Version="[0.0.3-alpha.2]" />
     <!-- No separate AWSSDK.DynamoDBStreams reference: that package didn't exist until AWS SDK v4 -
          under v3.7.x (which this pins to, matching Benzene.EventSourcing.DynamoDb's own reference -
          see TradeLedger's .csproj comment), IAmazonDynamoDBStreams/AmazonDynamoDBStreamsClient ship

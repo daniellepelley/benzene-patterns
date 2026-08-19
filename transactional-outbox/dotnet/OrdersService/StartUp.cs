@@ -3,6 +3,7 @@ using Benzene.Abstractions.Hosting;
 using Benzene.AspNet.Core;
 using Benzene.Core.MessageHandlers;
 using Benzene.Clients;
+using Benzene.Clients.Http;
 using Benzene.Core.MessageHandlers.DI;
 using Benzene.Microsoft.Dependencies;
 using Benzene.SelfHost;

@@ -16,7 +16,7 @@ public static class WireHeaders
     /// </summary>
     /// <remarks>
     /// <c>docs/specification/wire-contracts.md</c> §1.1 uses <c>x-correlation-id</c>, and as of the
-    /// pinned Benzene.Clients (0.0.3-alpha.1) so does <c>UseCorrelationId()</c> — its default is
+    /// pinned Benzene.Clients (0.0.3-alpha.2) so does <c>UseCorrelationId()</c> — its default is
     /// <c>x-correlation-id</c>, overridable process-wide via <c>CorrelationHeaderOptions.HeaderKey</c>.
     /// The mismatch an earlier alpha had is closed, so the argument passed at each call site is now
     /// belt-and-braces rather than a workaround. It stays because naming the key at both ends is the
