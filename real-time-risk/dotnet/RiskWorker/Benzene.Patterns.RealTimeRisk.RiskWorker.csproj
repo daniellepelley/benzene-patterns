@@ -17,20 +17,20 @@
     <!-- Exact [version] pins for every Benzene package, direct and transitive - see TradeLedger's
          .csproj for why a bare version is a floor rather than a pin here, and what floated when it
          was one. -->
-    <PackageReference Include="Benzene.AspNet.Core" Version="[0.0.2-alpha.4]" />
-    <PackageReference Include="Benzene.Abstractions" Version="[0.0.2-alpha.4]" />
-    <PackageReference Include="Benzene.Abstractions.MessageHandlers" Version="[0.0.2-alpha.4]" />
-    <PackageReference Include="Benzene.Abstractions.Messages" Version="[0.0.2-alpha.4]" />
-    <PackageReference Include="Benzene.Abstractions.Middleware" Version="[0.0.2-alpha.4]" />
-    <PackageReference Include="Benzene.Abstrations.Pipelines" Version="[0.0.2-alpha.4]" />
-    <PackageReference Include="Benzene.CodeGen.SourceGenerators" Version="[0.0.2-alpha.4]" />
-    <PackageReference Include="Benzene.Core" Version="[0.0.2-alpha.4]" />
-    <PackageReference Include="Benzene.Core.MessageHandlers" Version="[0.0.2-alpha.4]" />
-    <PackageReference Include="Benzene.Core.Messages" Version="[0.0.2-alpha.4]" />
-    <PackageReference Include="Benzene.Core.Middleware" Version="[0.0.2-alpha.4]" />
-    <PackageReference Include="Benzene.Http" Version="[0.0.2-alpha.4]" />
-    <PackageReference Include="Benzene.Microsoft.Dependencies" Version="[0.0.2-alpha.4]" />
-    <PackageReference Include="Benzene.Results" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.AspNet.Core" Version="[0.0.3-alpha.1]" />
+    <PackageReference Include="Benzene.Abstractions" Version="[0.0.3-alpha.1]" />
+    <PackageReference Include="Benzene.Abstractions.MessageHandlers" Version="[0.0.3-alpha.1]" />
+    <PackageReference Include="Benzene.Abstractions.Messages" Version="[0.0.3-alpha.1]" />
+    <PackageReference Include="Benzene.Abstractions.Middleware" Version="[0.0.3-alpha.1]" />
+    <PackageReference Include="Benzene.Abstrations.Pipelines" Version="[0.0.3-alpha.1]" />
+    <PackageReference Include="Benzene.CodeGen.SourceGenerators" Version="[0.0.3-alpha.1]" />
+    <PackageReference Include="Benzene.Core" Version="[0.0.3-alpha.1]" />
+    <PackageReference Include="Benzene.Core.MessageHandlers" Version="[0.0.3-alpha.1]" />
+    <PackageReference Include="Benzene.Core.Messages" Version="[0.0.3-alpha.1]" />
+    <PackageReference Include="Benzene.Core.Middleware" Version="[0.0.3-alpha.1]" />
+    <PackageReference Include="Benzene.Http" Version="[0.0.3-alpha.1]" />
+    <PackageReference Include="Benzene.Microsoft.Dependencies" Version="[0.0.3-alpha.1]" />
+    <PackageReference Include="Benzene.Results" Version="[0.0.3-alpha.1]" />
     <!-- Client-side gRPC. Grpc.Net.ClientFactory is not used: one long-lived channel per process is
          the documented gRPC guidance, and this worker talks to exactly one target. -->
     <PackageReference Include="Grpc.Net.Client" Version="2.62.0" />

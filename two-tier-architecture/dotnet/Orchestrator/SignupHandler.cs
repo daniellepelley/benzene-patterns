@@ -100,6 +100,10 @@ public class SignupHandler : IMessageHandler<SignupRequest, SignupResponse>
             return BenzeneResult.Ok(response);
         }
 
+        // SetFailed, not Set: the Set(status, string[]) overload is obsolete from 0.0.3-alpha.1 -
+        // ambiguous when T is not errors-shaped, because a single string argument can bind to the
+        // payload overload instead. Same behaviour, a name that cannot be confused.
+        //
         // A FAILED result's payload does not reach the caller: the HTTP binding maps a non-success
         // status onto problem details, whose body carries `errors`, not the handler's response type.
         // That is the wire working as specified, so the explanation goes where the wire actually
@@ -114,7 +118,7 @@ public class SignupHandler : IMessageHandler<SignupRequest, SignupResponse>
                 "Signup for {Company} left {Count} orphaned effect(s) - needs reconciliation",
                 request.Company, result.CompensationFailures.Count);
 
-            return BenzeneResult.Set<SignupResponse>(BenzeneResultStatus.UnexpectedError, new[]
+            return BenzeneResult.SetFailed<SignupResponse>(BenzeneResultStatus.UnexpectedError, new[]
             {
                 $"Signup failed at stage {result.FailedStageIndex} and rollback did not fully succeed.",
                 $"{result.CompensationFailures.Count} effect(s) may still be applied - reconciliation needed.",
@@ -127,7 +131,7 @@ public class SignupHandler : IMessageHandler<SignupRequest, SignupResponse>
         _logger.LogInformation("Signup for {Company} rolled back cleanly at stage {Stage}",
             request.Company, result.FailedStageIndex);
 
-        return BenzeneResult.Set<SignupResponse>(
+        return BenzeneResult.SetFailed<SignupResponse>(
             result.Failure?.Status ?? BenzeneResultStatus.UnexpectedError, new[]
             {
                 $"Signup failed at stage {result.FailedStageIndex} and was rolled back cleanly.",

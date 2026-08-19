@@ -21,22 +21,22 @@
          Benzene.Core, and Benzene.Microsoft.Dependencies each did this on different runs). The [version]
          bracket syntax is an exact-match constraint, which NuGet honors even against a higher-sorting
          candidate - so every Benzene.* package actually used (direct and transitive) is pinned here. -->
-    <PackageReference Include="Benzene.AspNet.Core" Version="[0.0.2-alpha.4]" />
-    <PackageReference Include="Benzene.EventSourcing" Version="[0.0.2-alpha.4]" />
-    <PackageReference Include="Benzene.EventSourcing.DynamoDb" Version="[0.0.2-alpha.4]" />
-    <PackageReference Include="Benzene.Abstractions" Version="[0.0.2-alpha.4]" />
-    <PackageReference Include="Benzene.Abstractions.MessageHandlers" Version="[0.0.2-alpha.4]" />
-    <PackageReference Include="Benzene.Abstractions.Messages" Version="[0.0.2-alpha.4]" />
-    <PackageReference Include="Benzene.Abstractions.Middleware" Version="[0.0.2-alpha.4]" />
-    <PackageReference Include="Benzene.Abstrations.Pipelines" Version="[0.0.2-alpha.4]" />
-    <PackageReference Include="Benzene.CodeGen.SourceGenerators" Version="[0.0.2-alpha.4]" />
-    <PackageReference Include="Benzene.Core" Version="[0.0.2-alpha.4]" />
-    <PackageReference Include="Benzene.Core.MessageHandlers" Version="[0.0.2-alpha.4]" />
-    <PackageReference Include="Benzene.Core.Messages" Version="[0.0.2-alpha.4]" />
-    <PackageReference Include="Benzene.Core.Middleware" Version="[0.0.2-alpha.4]" />
-    <PackageReference Include="Benzene.Http" Version="[0.0.2-alpha.4]" />
-    <PackageReference Include="Benzene.Microsoft.Dependencies" Version="[0.0.2-alpha.4]" />
-    <PackageReference Include="Benzene.Results" Version="[0.0.2-alpha.4]" />
+    <PackageReference Include="Benzene.AspNet.Core" Version="[0.0.3-alpha.1]" />
+    <PackageReference Include="Benzene.EventSourcing" Version="[0.0.3-alpha.1]" />
+    <PackageReference Include="Benzene.EventSourcing.DynamoDb" Version="[0.0.3-alpha.1]" />
+    <PackageReference Include="Benzene.Abstractions" Version="[0.0.3-alpha.1]" />
+    <PackageReference Include="Benzene.Abstractions.MessageHandlers" Version="[0.0.3-alpha.1]" />
+    <PackageReference Include="Benzene.Abstractions.Messages" Version="[0.0.3-alpha.1]" />
+    <PackageReference Include="Benzene.Abstractions.Middleware" Version="[0.0.3-alpha.1]" />
+    <PackageReference Include="Benzene.Abstrations.Pipelines" Version="[0.0.3-alpha.1]" />
+    <PackageReference Include="Benzene.CodeGen.SourceGenerators" Version="[0.0.3-alpha.1]" />
+    <PackageReference Include="Benzene.Core" Version="[0.0.3-alpha.1]" />
+    <PackageReference Include="Benzene.Core.MessageHandlers" Version="[0.0.3-alpha.1]" />
+    <PackageReference Include="Benzene.Core.Messages" Version="[0.0.3-alpha.1]" />
+    <PackageReference Include="Benzene.Core.Middleware" Version="[0.0.3-alpha.1]" />
+    <PackageReference Include="Benzene.Http" Version="[0.0.3-alpha.1]" />
+    <PackageReference Include="Benzene.Microsoft.Dependencies" Version="[0.0.3-alpha.1]" />
+    <PackageReference Include="Benzene.Results" Version="[0.0.3-alpha.1]" />
     <!-- Pinned to the exact version Benzene.EventSourcing.DynamoDb itself references (see that
          package's .csproj in benzene-dotnet), not a floating range: AWS SDK v4 is a breaking major
          version bump from v3, so floating here risked resolving a version that package wasn't built

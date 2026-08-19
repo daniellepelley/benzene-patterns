@@ -191,16 +191,15 @@ over a shared database is the usual production shape — the projector scales on
 query side on read volume, which is half the point of CQRS — and nothing but the hosting would
 change.
 
-`UseAspNet` is why this example pins **0.0.2-alpha.6** where the others pin alpha.4; it does not
-exist in alpha.4. The reason is written up in
-[`Directory.Packages.props`](dotnet/Directory.Packages.props).
+`UseAspNet` needs 0.0.2-alpha.5 or later, which briefly split this repo's pins; every example now
+pins **0.0.3-alpha.1** and uses it.
 
 ## The framework gap, again
 
 Each write service carries a copy of `RabbitMqOverOutbound.cs` — the `OutboundContext` overload
 `Benzene.RabbitMq` does not ship, written out. It is the same gap the
 [choreography example](../choreography/README.md#two-framework-gaps-this-needed) documents, and it is
-still present in alpha.6. Two more copies here takes this repo to **seven hand-rolled outbound
+still present in 0.0.3-alpha.1. Two more copies here takes this repo to **seven hand-rolled outbound
 adapters across five patterns**, which is an argument for closing the gap upstream rather than for
 getting better at copying the file.
 

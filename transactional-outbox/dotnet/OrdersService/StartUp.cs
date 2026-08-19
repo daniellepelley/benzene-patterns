@@ -5,6 +5,7 @@ using Benzene.Core.MessageHandlers;
 using Benzene.Clients;
 using Benzene.Core.MessageHandlers.DI;
 using Benzene.Microsoft.Dependencies;
+using Benzene.SelfHost;
 using Benzene.Patterns.TransactionalOutbox.Contracts;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -37,6 +38,18 @@ public class StartUp : BenzeneStartUp
                 .Route(Topics.OrderCreated, p => p.UseBenzeneMessageOverHttp(notificationsUrl))));
     }
 
+    /// <summary>
+    /// HTTP is a transport, so it is declared here with every other transport — not in
+    /// <c>Program.cs</c>.
+    /// </summary>
+    /// <remarks>
+    /// <c>UseAspNet</c> runs Kestrel as a Benzene worker, the same way <c>UseSqs</c> or
+    /// <c>UseRabbitMq</c> run their consumers, so the entry point contains no ASP.NET at all — only
+    /// the table provisioning this service does before it starts serving.
+    /// </remarks>
     public override void Configure(IBenzeneApplicationBuilder app, IConfiguration configuration)
-        => app.UseHttp(http => http.UseMessageHandlers());
+        => app.UseWorker(worker => worker
+            .UseAspNet(
+                http => http.UseMessageHandlers(),
+                options => options.Urls = $"http://0.0.0.0:{configuration["PORT"] ?? "8080"}"));
 }

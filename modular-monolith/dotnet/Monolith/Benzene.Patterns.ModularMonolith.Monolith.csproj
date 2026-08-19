@@ -13,8 +13,10 @@
          a magic co-location mode. Only the monolith host references it; the extracted services do
          not, because they do not have an in-process neighbour to route to. -->
     <PackageReference Include="Benzene.Clients.InProcess" />
+    <PackageReference Include="Benzene.HostedService" />
     <PackageReference Include="Benzene.Http" />
     <PackageReference Include="Benzene.Microsoft.Dependencies" />
+    <PackageReference Include="Benzene.SelfHost" />
   </ItemGroup>
 
   <ItemGroup>

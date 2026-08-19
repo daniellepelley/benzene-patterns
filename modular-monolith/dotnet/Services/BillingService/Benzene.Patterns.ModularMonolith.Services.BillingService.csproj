@@ -8,8 +8,10 @@
 
   <ItemGroup>
     <PackageReference Include="Benzene.AspNet.Core" />
+    <PackageReference Include="Benzene.HostedService" />
     <PackageReference Include="Benzene.Http" />
     <PackageReference Include="Benzene.Microsoft.Dependencies" />
+    <PackageReference Include="Benzene.SelfHost" />
   </ItemGroup>
 
   <ItemGroup>

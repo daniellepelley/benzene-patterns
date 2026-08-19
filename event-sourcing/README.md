@@ -147,14 +147,10 @@ dotnet/Ledger/
 
 ## Where the hosting lives
 
-`Program.cs` is the plain generic host, and contains no ASP.NET at all:
+`Program.cs` is one line, and contains no ASP.NET at all:
 
 ```csharp
-var host = Host.CreateDefaultBuilder(args)
-    .UseBenzene<StartUp>()
-    .Build();
-
-await host.RunAsync();
+await BenzeneHost.RunAsync<StartUp>(args);
 ```
 
 HTTP is declared in `StartUp.Configure`, with every other transport this service might grow:

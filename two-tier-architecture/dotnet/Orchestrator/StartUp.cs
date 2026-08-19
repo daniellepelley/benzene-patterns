@@ -4,6 +4,7 @@ using Benzene.Clients;
 using Benzene.Core.MessageHandlers;
 using Benzene.Core.MessageHandlers.DI;
 using Benzene.Microsoft.Dependencies;
+using Benzene.SelfHost;
 using Benzene.Patterns.TwoTier.Contracts;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -49,6 +50,20 @@ public class StartUp : BenzeneStartUp
                 .Route(Topics.BillingTeardown, p => p.UseBenzeneMessageOverHttp(billing))));
     }
 
+    /// <summary>
+    /// HTTP is a transport, so it is declared here with every other transport — not in
+    /// <c>Program.cs</c>.
+    /// </summary>
+    /// <remarks>
+    /// <c>UseAspNet</c> runs Kestrel as a Benzene worker, the same way <c>UseSqs</c> or
+    /// <c>UseRabbitMq</c> run their consumers, so <c>Program.cs</c> is one line and contains no
+    /// ASP.NET at all. The embedded alternative — <c>WebApplicationBuilder.UseBenzene&lt;StartUp&gt;()</c>
+    /// plus <c>app.UseBenzene()</c> — is for putting Benzene inside a LARGER ASP.NET application that
+    /// has its own controllers or minimal APIs. This service has none.
+    /// </remarks>
     public override void Configure(IBenzeneApplicationBuilder app, IConfiguration configuration)
-        => app.UseHttp(http => http.UseMessageHandlers());
+        => app.UseWorker(worker => worker
+            .UseAspNet(
+                http => http.UseMessageHandlers(),
+                options => options.Urls = $"http://0.0.0.0:{configuration["PORT"] ?? "8080"}"));
 }
