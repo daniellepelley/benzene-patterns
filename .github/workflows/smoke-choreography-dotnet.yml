@@ -39,13 +39,34 @@ jobs:
       - name: The emitter knows no consumer
         # The whole pattern in one grep. An emitter that names a reaction has stopped choreographing
         # and started orchestrating badly.
+        #
+        # A line that is entirely comment is exempt, on purpose. The doc comment on StartUp exists to
+        # tell the reader there ARE three reactions and a fourth to come - that is the example. What
+        # must not name a reaction is the emitter's CODE: a using, a type, a route, a connection
+        # string. So the guard checks every line that is not pure prose, and then proves on two
+        # fixed inputs that it still catches a real reference and still lets the prose through.
         run: |
           set -euo pipefail
           cd choreography/dotnet
-          if git grep -niE 'welcomeemail|cachewarmer|trialclock|analytics|welcome-email|cache-warmer|trial-clock' -- 'Emitter/*'; then
+          names='welcomeemail|cachewarmer|trialclock|analytics|welcome-email|cache-warmer|trial-clock'
+          offenders() { grep -niIE "$names" | grep -vE '^[0-9]+:[[:space:]]*(///|//|\*|/\*)' || true; }
+
+          fail=0
+          for f in $(git ls-files 'Emitter/*'); do
+            hits=$(offenders < "$f")
+            if [ -n "$hits" ]; then echo "$hits" | sed "s|^|$f:|"; fail=1; fi
+          done
+          [ "$fail" = "0" ] || {
             echo "::error::the emitter names a consumer - it is no longer decoupled from its reactions"
             exit 1
-          fi
+          }
+
+          # A guard that cannot fail is not a guard.
+          [ -n "$(printf 'var mailer = new WelcomeEmailClient();\n' | offenders)" ] \
+            || { echo "::error::this guard has stopped catching a real reference to a reaction"; exit 1; }
+          [ -z "$(printf '/// Four, once you start the analytics service.\n' | offenders)" ] \
+            || { echo "::error::this guard is matching prose again"; exit 1; }
+
           echo "the emitter names no consumer"
 
       - name: No reaction knows another reaction
