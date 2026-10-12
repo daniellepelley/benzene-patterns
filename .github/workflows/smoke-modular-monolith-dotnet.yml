@@ -149,9 +149,12 @@ jobs:
           set -euo pipefail
           for pair in "$MONOLITH monolith" "$EXTRACTED orders"; do
             set -- $pair
-            if ! docker compose -f "$1" logs "$2" 2>&1 | grep -q "refunding charge"; then
+            # Read the whole log first. Piped straight into `grep -q`, grep exits at the first match,
+            # `docker compose logs` can die of SIGPIPE, and pipefail reports a found line as missing.
+            logs=$(docker compose -f "$1" logs "$2" 2>&1)
+            if ! grep -q "refunding charge" <<<"$logs"; then
               echo "::error::no compensation logged in $2"
-              docker compose -f "$1" logs "$2" || true
+              printf '%s\n' "$logs"
               exit 1
             fi
           done
