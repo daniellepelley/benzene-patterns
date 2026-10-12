@@ -192,7 +192,7 @@ query side on read volume, which is half the point of CQRS — and nothing but t
 change.
 
 `UseAspNet` needs 0.0.2-alpha.5 or later, which briefly split this repo's pins; every example now
-pins **0.0.3-alpha.2** and uses it.
+pins **0.1.0-alpha.1** and uses it.
 
 ## The framework gap, now closed
 

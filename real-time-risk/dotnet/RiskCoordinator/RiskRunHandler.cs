@@ -89,7 +89,7 @@ public class RiskRunHandler : IMessageHandler<RiskRunRequest, RiskRunResponse>
             TotalValue = total.MarketValue + total.RealizedCash,
             PositionsValued = total.PositionsValued,
             UnpricedSymbols = total.UnpricedSymbols.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList(),
-            FailedShards = scattered.FailedShards.Select(x => x.ShardId).ToList(),
+            FailedShards = scattered.FailedShards.Select(x => x.Shard.ShardId).ToList(),
             IsComplete = scattered.IsComplete,
             IsFullyPriced = total.UnpricedSymbols.Count == 0
         });
