@@ -29,9 +29,6 @@ namespace Benzene.Patterns.TwoTier.Orchestrator;
 /// </remarks>
 public class StartUp : BenzeneStartUp
 {
-    public override IConfiguration GetConfiguration()
-        => new ConfigurationBuilder().AddEnvironmentVariables().Build();
-
     public override void ConfigureServices(IServiceCollection services, IConfiguration configuration)
     {
         var tenant = configuration["TENANT_URL"] ?? "http://tenant:8080/benzene-message";

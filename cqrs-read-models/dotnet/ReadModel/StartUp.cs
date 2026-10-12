@@ -38,9 +38,6 @@ namespace Benzene.Patterns.Cqrs.ReadModel;
 /// </remarks>
 public class StartUp : BenzeneStartUp
 {
-    public override IConfiguration GetConfiguration()
-        => new ConfigurationBuilder().AddEnvironmentVariables().Build();
-
     public override void ConfigureServices(IServiceCollection services, IConfiguration configuration)
     {
         var tenantEvents = configuration["TENANT_EVENTS_URL"] ?? "http://tenant:8080/events";

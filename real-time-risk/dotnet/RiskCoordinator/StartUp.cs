@@ -33,11 +33,6 @@ namespace Benzene.Patterns.RealTimeRisk.RiskCoordinator;
 /// </remarks>
 public class StartUp : BenzeneStartUp
 {
-    public override IConfiguration GetConfiguration()
-        => new ConfigurationBuilder()
-            .AddEnvironmentVariables()
-            .Build();
-
     public override void ConfigureServices(IServiceCollection services, IConfiguration configuration)
     {
         var workerUrl = configuration["RISK_WORKER_URL"] ?? "http://risk-worker:8080/benzene-message";

@@ -1,5 +1,10 @@
 # Boilerplate these examples can drop once the next alpha ships
 
+> ARCHIVED 2026-10-12 — actioned on the bump to Benzene `0.1.0-alpha.1`. All 25 `GetConfiguration`
+> overrides were deleted, not 20: the five in real-time-risk, counted below as richer, have the
+> same default body split over three lines. The five verifications are the smoke workflows, run
+> against `0.1.0-alpha.1`.
+
 These examples pin `0.0.3-alpha.2`. Changes landed in benzene-dotnet **after** that release let
 several more lines go — recorded here so the deletion happens on the version bump rather than being
 rediscovered.

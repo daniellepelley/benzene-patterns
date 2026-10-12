@@ -23,9 +23,6 @@ namespace Benzene.Patterns.ModularMonolith.Services.BillingService;
 /// </remarks>
 public class StartUp : BenzeneStartUp
 {
-    public override IConfiguration GetConfiguration()
-        => new ConfigurationBuilder().AddEnvironmentVariables().Build();
-
     public override void ConfigureServices(IServiceCollection services, IConfiguration configuration)
     {
         services.AddSingleton<BillingStore>();

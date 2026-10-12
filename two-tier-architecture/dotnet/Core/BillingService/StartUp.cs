@@ -21,9 +21,6 @@ namespace Benzene.Patterns.TwoTier.Core.BillingService;
 /// </remarks>
 public class StartUp : BenzeneStartUp
 {
-    public override IConfiguration GetConfiguration()
-        => new ConfigurationBuilder().AddEnvironmentVariables().Build();
-
     public override void ConfigureServices(IServiceCollection services, IConfiguration configuration)
     {
         services.AddSingleton<BillingStore>();

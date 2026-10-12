@@ -31,11 +31,6 @@ namespace Benzene.Patterns.RealTimeRisk.RiskWorker;
 /// </remarks>
 public class StartUp : BenzeneStartUp
 {
-    public override IConfiguration GetConfiguration()
-        => new ConfigurationBuilder()
-            .AddEnvironmentVariables()
-            .Build();
-
     public override void ConfigureServices(IServiceCollection services, IConfiguration configuration)
     {
         var readModelsUrl = configuration["READ_MODELS_URL"] ?? "http://risk-read-models:8080";

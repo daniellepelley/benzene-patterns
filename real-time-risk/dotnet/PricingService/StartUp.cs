@@ -32,11 +32,6 @@ namespace Benzene.Patterns.RealTimeRisk.PricingService;
 /// </remarks>
 public class StartUp : BenzeneStartUp
 {
-    public override IConfiguration GetConfiguration()
-        => new ConfigurationBuilder()
-            .AddEnvironmentVariables()
-            .Build();
-
     public override void ConfigureServices(IServiceCollection services, IConfiguration configuration)
     {
         // Reflection is on so `grpcurl` can drive this service with no local .proto file - the

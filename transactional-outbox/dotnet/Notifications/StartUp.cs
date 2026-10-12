@@ -16,9 +16,6 @@ namespace Benzene.Patterns.TransactionalOutbox.Notifications;
 /// </summary>
 public class StartUp : BenzeneStartUp
 {
-    public override IConfiguration GetConfiguration()
-        => new ConfigurationBuilder().AddEnvironmentVariables().Build();
-
     public override void ConfigureServices(IServiceCollection services, IConfiguration configuration)
     {
         services.AddSingleton<NotificationStore>();

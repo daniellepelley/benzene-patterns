@@ -37,9 +37,6 @@ namespace Benzene.Patterns.ModularMonolith.Monolith;
 /// </remarks>
 public class StartUp : BenzeneStartUp
 {
-    public override IConfiguration GetConfiguration()
-        => new ConfigurationBuilder().AddEnvironmentVariables().Build();
-
     public override void ConfigureServices(IServiceCollection services, IConfiguration configuration)
     {
         // Each module's own data, owned outright. Nothing reads another module's store (rule 2) -
