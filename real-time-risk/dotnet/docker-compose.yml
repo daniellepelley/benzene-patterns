@@ -81,7 +81,7 @@ services:
       dockerfile: RiskCoordinator/Dockerfile
     image: benzene-patterns-risk-coordinator:compose
     environment:
-      - RISK_WORKER_URL=http://risk-worker:8080/benzene-message
+      - RISK_WORKER_URL=http://risk-worker:8080/benzene/invoke
     ports:
       - "8084:8080"
     depends_on:

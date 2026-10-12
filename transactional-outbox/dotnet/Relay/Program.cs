@@ -14,7 +14,7 @@ using Microsoft.Extensions.DependencyInjection;
 // BackgroundService. Its one job is to turn committed changes into published events.
 var builder = WebApplication.CreateBuilder(args);
 var configuration = builder.Configuration;
-var notificationsUrl = configuration["NOTIFICATIONS_URL"] ?? "http://notifications:8080/benzene-message";
+var notificationsUrl = configuration["NOTIFICATIONS_URL"] ?? "http://notifications:8080/benzene/invoke";
 
 builder.Services.AddSingleton(_ => DynamoDbClientFactory.Create(configuration));
 builder.Services.AddSingleton<IAmazonDynamoDBStreams>(_ =>

@@ -31,9 +31,9 @@ public class StartUp : BenzeneStartUp
 {
     public override void ConfigureServices(IServiceCollection services, IConfiguration configuration)
     {
-        var tenant = configuration["TENANT_URL"] ?? "http://tenant:8080/benzene-message";
-        var user = configuration["USER_URL"] ?? "http://user:8080/benzene-message";
-        var billing = configuration["BILLING_URL"] ?? "http://billing:8080/benzene-message";
+        var tenant = configuration["TENANT_URL"] ?? "http://tenant:8080/benzene/invoke";
+        var user = configuration["USER_URL"] ?? "http://user:8080/benzene/invoke";
+        var billing = configuration["BILLING_URL"] ?? "http://billing:8080/benzene/invoke";
 
         services.AddSingleton(_ => new HttpClient());
 

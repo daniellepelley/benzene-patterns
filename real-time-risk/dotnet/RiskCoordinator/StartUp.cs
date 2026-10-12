@@ -35,7 +35,7 @@ public class StartUp : BenzeneStartUp
 {
     public override void ConfigureServices(IServiceCollection services, IConfiguration configuration)
     {
-        var workerUrl = configuration["RISK_WORKER_URL"] ?? "http://risk-worker:8080/benzene-message";
+        var workerUrl = configuration["RISK_WORKER_URL"] ?? "http://risk-worker:8080/benzene/invoke";
 
         // One HttpClient for the process. The outbound middleware is transient per send, so it must
         // not own the socket handler - that is the classic socket-exhaustion shape.

@@ -17,7 +17,7 @@ namespace Benzene.Patterns.RealTimeRisk.RiskWorker;
 /// </summary>
 /// <remarks>
 /// <para>
-/// It serves the <b>BenzeneMessage endpoint</b> (<c>POST /benzene-message</c>) rather than a REST
+/// It serves the <b>BenzeneMessage endpoint</b> (<c>POST /benzene/invoke</c>) rather than a REST
 /// route, because that is the HTTP counterpart of the Lambda invoke path this would use in
 /// production: the topic travels inside the envelope, so one endpoint serves every topic and the
 /// receiving side routes on it exactly as a Lambda-hosted worker would. Swapping the two is a

@@ -31,9 +31,9 @@ services:
       dockerfile: Orchestrator/Dockerfile
     image: benzene-patterns-twotier-orchestrator:compose
     environment:
-      - TENANT_URL=http://tenant:8080/benzene-message
-      - USER_URL=http://user:8080/benzene-message
-      - BILLING_URL=http://billing:8080/benzene-message
+      - TENANT_URL=http://tenant:8080/benzene/invoke
+      - USER_URL=http://user:8080/benzene/invoke
+      - BILLING_URL=http://billing:8080/benzene/invoke
     ports:
       - "9280:8080"
     depends_on:

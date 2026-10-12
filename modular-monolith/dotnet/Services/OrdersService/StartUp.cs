@@ -36,8 +36,8 @@ public class StartUp : BenzeneStartUp
 {
     public override void ConfigureServices(IServiceCollection services, IConfiguration configuration)
     {
-        var billingUrl = configuration["BILLING_URL"] ?? "http://billing:8080/benzene-message";
-        var shippingUrl = configuration["SHIPPING_URL"] ?? "http://shipping:8080/benzene-message";
+        var billingUrl = configuration["BILLING_URL"] ?? "http://billing:8080/benzene/invoke";
+        var shippingUrl = configuration["SHIPPING_URL"] ?? "http://shipping:8080/benzene/invoke";
 
         services.AddSingleton(_ => new HttpClient());
         services.AddSingleton(new DeploymentName("extracted"));

@@ -20,8 +20,8 @@ services:
       dockerfile: Services/OrdersService/Dockerfile
     image: benzene-patterns-mm-orders:compose
     environment:
-      - BILLING_URL=http://billing:8080/benzene-message
-      - SHIPPING_URL=http://shipping:8080/benzene-message
+      - BILLING_URL=http://billing:8080/benzene/invoke
+      - SHIPPING_URL=http://shipping:8080/benzene/invoke
     ports:
       - "9081:8080"
     depends_on:

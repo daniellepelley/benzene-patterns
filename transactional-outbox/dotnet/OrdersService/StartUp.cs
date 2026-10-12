@@ -25,7 +25,7 @@ public class StartUp : BenzeneStartUp
 {
     public override void ConfigureServices(IServiceCollection services, IConfiguration configuration)
     {
-        var notificationsUrl = configuration["NOTIFICATIONS_URL"] ?? "http://notifications:8080/benzene-message";
+        var notificationsUrl = configuration["NOTIFICATIONS_URL"] ?? "http://notifications:8080/benzene/invoke";
 
         services.AddSingleton(_ => DynamoDbClientFactory.Create(configuration));
         services.AddSingleton(_ => new HttpClient());

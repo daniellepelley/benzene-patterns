@@ -31,7 +31,7 @@ services:
     image: benzene-patterns-outbox-orders:compose
     environment:
       - DYNAMODB_SERVICE_URL=http://dynamodb-local:8000
-      - NOTIFICATIONS_URL=http://notifications:8080/benzene-message
+      - NOTIFICATIONS_URL=http://notifications:8080/benzene/invoke
     ports:
       - "9180:8080"
     depends_on:
@@ -45,7 +45,7 @@ services:
     image: benzene-patterns-outbox-relay:compose
     environment:
       - DYNAMODB_SERVICE_URL=http://dynamodb-local:8000
-      - NOTIFICATIONS_URL=http://notifications:8080/benzene-message
+      - NOTIFICATIONS_URL=http://notifications:8080/benzene/invoke
     ports:
       - "9182:8080"
     depends_on:
